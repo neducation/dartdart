@@ -13,19 +13,82 @@ export class Entity {
 }
 
 export class Projectile extends Entity {
-  constructor(x, y, dirX, dirY, speed = 260, damage = 25, owner = "player") {
+  // Add extra options for perks
+  constructor(
+    x,
+    y,
+    dirX,
+    dirY,
+    speed = 260,
+    damage = 25,
+    owner = "player",
+    opts = {}
+  ) {
     super(x, y);
     const n = normalize(dirX, dirY);
     this.vx = n.x * speed;
     this.vy = n.y * speed;
     this.damage = damage;
     this.owner = owner;
-    this.life = 3; // seconds
+    this.life = 3;
+    this.split = opts.split || false;
+    this.homing = opts.homing || false;
+    this.ricochet = opts.ricochet || false;
+    this.hasSplit = false; // prevent infinite splits
+    this.bounces = opts.bounces || 0;
+  }
+  reset(x, y, dirX, dirY, speed, damage, owner, opts = {}) {
+    this.x = x;
+    this.y = y;
+    const n = normalize(dirX, dirY);
+    this.vx = n.x * speed;
+    this.vy = n.y * speed;
+    this.damage = damage;
+    this.owner = owner;
+    this.life = 3;
+    this.dead = false;
+    this.split = opts.split || false;
+    this.homing = opts.homing || false;
+    this.ricochet = opts.ricochet || false;
+    this.hasSplit = false;
+    this.bounces = opts.bounces || 0;
   }
   update(dt, world) {
+    // Homing: adjust velocity toward nearest enemy
+    if (this.homing && this.owner === "player") {
+      const target = pickNearest(
+        this,
+        world.enemies.filter((e) => !e.dead)
+      );
+      if (target) {
+        const n = normalize(target.x - this.x, target.y - this.y);
+        // Lerp velocity toward target
+        this.vx = this.vx * 0.85 + n.x * Math.hypot(this.vx, this.vy) * 0.15;
+        this.vy = this.vy * 0.85 + n.y * Math.hypot(this.vx, this.vy) * 0.15;
+      }
+    }
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.life -= dt;
+    // Ricochet: bounce off walls
+    if (this.ricochet && this.owner === "player" && this.bounces < 2) {
+      let bounced = false;
+      if (this.x < 0 || this.x > world.width) {
+        this.vx = -this.vx;
+        this.bounces++;
+        bounced = true;
+      }
+      if (this.y < 0 || this.y > world.height) {
+        this.vy = -this.vy;
+        this.bounces++;
+        bounced = true;
+      }
+      if (bounced) {
+        // Clamp inside bounds
+        this.x = Math.max(0, Math.min(world.width, this.x));
+        this.y = Math.max(0, Math.min(world.height, this.y));
+      }
+    }
     if (this.life <= 0) this.dead = true;
 
     // collisions
@@ -37,6 +100,33 @@ export class Projectile extends Entity {
         const r = e.radius + 6;
         if (dx * dx + dy * dy <= r * r) {
           const killed = e.hit(this.damage);
+          // Split on impact
+          if (this.split && !this.hasSplit) {
+            for (let i = 0; i < 2; i++) {
+              const angle =
+                Math.atan2(this.vy, this.vx) +
+                (i === 0 ? Math.PI / 6 : -Math.PI / 6);
+              let p = world.getProjectile();
+              if (!p) p = new Projectile(0, 0, 0, 0);
+              p.reset(
+                this.x,
+                this.y,
+                Math.cos(angle),
+                Math.sin(angle),
+                Math.hypot(this.vx, this.vy),
+                this.damage * 0.7,
+                this.owner,
+                {
+                  split: false,
+                  homing: this.homing,
+                  ricochet: this.ricochet,
+                  bounces: this.bounces,
+                }
+              );
+              world.spawnProjectile(p);
+            }
+            this.hasSplit = true;
+          }
           this.dead = true;
           if (killed) {
             // award XP to player and notify wave manager
@@ -103,17 +193,24 @@ export class Player extends Entity {
         world.enemies.filter((e) => !e.dead)
       );
       if (target) {
-        world.spawnProjectile(
-          new Projectile(
-            this.x,
-            this.y,
-            target.x - this.x,
-            target.y - this.y,
-            this.projectileSpeed,
-            25,
-            "player"
-          )
+        // Use projectile pool and perks
+        let opts = {};
+        if (this.perkSplit) opts.split = true;
+        if (this.perkHoming) opts.homing = true;
+        if (this.perkRicochet) opts.ricochet = true;
+        let p = world.getProjectile();
+        if (!p) p = new Projectile(0, 0, 0, 0);
+        p.reset(
+          this.x,
+          this.y,
+          target.x - this.x,
+          target.y - this.y,
+          this.projectileSpeed,
+          25,
+          "player",
+          opts
         );
+        world.spawnProjectile(p);
         world.effects.push({ t: 0.08, x: this.x, y: this.y });
         this.fireCooldown = this.fireRate;
       }
@@ -250,17 +347,24 @@ export class Pet extends Entity {
         world.enemies.filter((e) => !e.dead)
       );
       if (target) {
-        world.spawnProjectile(
-          new Projectile(
-            this.x,
-            this.y,
-            target.x - this.x,
-            target.y - this.y,
-            280,
-            20,
-            "player"
-          )
+        // Use projectile pool and perks
+        let opts = {};
+        if (player.perkSplit) opts.split = true;
+        if (player.perkHoming) opts.homing = true;
+        if (player.perkRicochet) opts.ricochet = true;
+        let p = world.getProjectile();
+        if (!p) p = new Projectile(0, 0, 0, 0);
+        p.reset(
+          this.x,
+          this.y,
+          target.x - this.x,
+          target.y - this.y,
+          280,
+          20,
+          "player",
+          opts
         );
+        world.spawnProjectile(p);
         world.effects.push({ t: 0.06, x: this.x, y: this.y });
         this.fireCooldown = this.fireRate;
       }

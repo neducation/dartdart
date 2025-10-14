@@ -21,45 +21,77 @@ function resize() {
 }
 window.addEventListener("resize", resize);
 
-const world = {
-  width: 0,
-  height: 0,
-  input: null,
-  sprites: null,
-  player: null,
-  enemies: [],
-  projectiles: [],
-  effects: [],
-  wave: null,
-  paused: false,
-  pauseReason: "",
-  spawnProjectile(p) {
-    this.projectiles.push(p);
-  },
-};
-
-async function boot() {
-  resize();
-  world.input = new VirtualJoystick(canvas);
-  world.sprites = await loadSpriteSheet("./assets/sprites.svg");
-  world.player = new Player(world.width / 2, world.height / 2);
-  setupLeveling();
-
-  // start waves
-  world.wave = createWaveManager();
-  world.wave.startNext();
-
-  const engine = new Engine(update, render);
-  engine.start();
-
-  // Pause/Resume button
-  const pauseBtn = document.getElementById("pause-btn");
-  const updatePauseLabel = () => {
-    pauseBtn.textContent = world.paused ? "Resume" : "Pause";
-  };
-  pauseBtn.addEventListener("click", () => {
-    // manual toggle only when not overlay-paused
-    world.paused = !world.paused;
+// --- Projectile Pool ---
+const projectilePool = [];
+function getProjectile() {
+  return projectilePool.length > 0 ? projectilePool.pop() : null;
+}
+function generateUpgrades() {
+  const p = world.player;
+  const choices = [];
+  choices.push({
+    title: `Bullet Speed +20% (now ${Math.round(p.projectileSpeed * 1.2)})`,
+    apply: () => {
+      p.projectileSpeed = Math.round(p.projectileSpeed * 1.2);
+    },
+  });
+  choices.push({
+    title: `Fire Rate +15% (faster)`,
+    apply: () => {
+      p.fireRate = Math.max(0.2, +(p.fireRate * 0.85).toFixed(2));
+    },
+  });
+  choices.push({
+    title: `+1 Pet Companion`,
+    apply: () => {
+      p.pets.push(new Pet(Math.random() * Math.PI * 2));
+    },
+  });
+  // --- New Perks ---
+  choices.push({
+    title: `Bullets Split on Impact`,
+    apply: () => { p.perkSplit = true; },
+  });
+  choices.push({
+    title: `Bullets Track Enemies`,
+    apply: () => { p.perkHoming = true; },
+  });
+  choices.push({
+    title: `Bullets Ricochet`,
+    apply: () => { p.perkRicochet = true; },
+  });
+  // --- Elemental Perks ---
+  choices.push({
+    title: `Bullets inflict FIRE (burns enemies)`,
+    apply: () => { p.perkFire = true; },
+  });
+  choices.push({
+    title: `Bullets inflict ICE (slow enemies)`,
+    apply: () => { p.perkIce = true; },
+  });
+  choices.push({
+    title: `Bullets inflict LIGHTNING (chain hit)`,
+    apply: () => { p.perkLightning = true; },
+  });
+  choices.push({
+    title: `Bullets inflict POISON (damage over time)`,
+    apply: () => { p.perkPoison = true; },
+  });
+  // For debugging: let player pick all perks at once
+  choices.push({
+    title: `DEBUG: Grant ALL Perks`,
+    apply: () => {
+      p.perkSplit = true;
+      p.perkHoming = true;
+      p.perkRicochet = true;
+      p.perkFire = true;
+      p.perkIce = true;
+      p.perkLightning = true;
+      p.perkPoison = true;
+    },
+  });
+  return choices;
+}
     world.pauseReason = world.paused ? "manual" : "";
     updatePauseLabel();
   });
@@ -81,7 +113,14 @@ function update(dt) {
 
   // projectiles
   for (const p of world.projectiles) p.update(dt, world);
-  world.projectiles = world.projectiles.filter((p) => !p.dead);
+  // Remove dead projectiles and pool them
+  world.projectiles = world.projectiles.filter((p) => {
+    if (p.dead) {
+      world.releaseProjectile(p);
+      return false;
+    }
+    return true;
+  });
 
   // effects
   for (const fx of world.effects) fx.t -= dt;
@@ -201,29 +240,6 @@ function setupLeveling() {
   };
 }
 
-function generateUpgrades() {
-  const p = world.player;
-  const choices = [];
-  choices.push({
-    title: `Bullet Speed +20% (now ${Math.round(p.projectileSpeed * 1.2)})`,
-    apply: () => {
-      p.projectileSpeed = Math.round(p.projectileSpeed * 1.2);
-    },
-  });
-  choices.push({
-    title: `Fire Rate +15% (faster)`,
-    apply: () => {
-      p.fireRate = Math.max(0.2, +(p.fireRate * 0.85).toFixed(2));
-    },
-  });
-  choices.push({
-    title: `+1 Pet Companion`,
-    apply: () => {
-      p.pets.push(new Pet(Math.random() * Math.PI * 2));
-    },
-  });
-  return choices;
-}
 
 // --- Waves ---
 function createWaveManager() {
