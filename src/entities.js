@@ -252,28 +252,8 @@ export class Pet extends Entity {
       if (target) {
         world.spawnProjectile(
           new Projectile(
-        drawHealthbar(ctx, this.x, this.y - 18, 18, this.hp, this.maxHp);
             this.x,
             this.y,
-
-    function drawHealthbar(ctx, x, y, width, hp, maxHp) {
-      ctx.save();
-      const h = 4;
-      const pad = 1;
-      const w = width;
-      // background
-      ctx.fillStyle = '#111827';
-      ctx.fillRect(x - w/2, y, w, h);
-      // border
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x - w/2 + 0.5, y + 0.5, w - 1, h - 1);
-      // fill
-      const ratio = Math.max(0, Math.min(1, hp / maxHp));
-      ctx.fillStyle = ratio > 0.5 ? '#22c55e' : (ratio > 0.25 ? '#f59e0b' : '#ef4444');
-      ctx.fillRect(x - w/2 + pad, y + pad, (w - pad*2) * ratio, h - pad*2);
-      ctx.restore();
-    }
             target.x - this.x,
             target.y - this.y,
             280,
@@ -289,5 +269,26 @@ export class Pet extends Entity {
   draw(ctx, sprites) {
     // reuse player sprite smaller for pet
     sprites.draw(ctx, "player", this.x, this.y, 20);
+    drawHealthbar(ctx, this.x, this.y - 18, 18, this.hp, this.maxHp);
   }
+}
+
+function drawHealthbar(ctx, x, y, width, hp, maxHp) {
+  ctx.save();
+  const h = 4;
+  const pad = 1;
+  const w = width;
+  // background
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(x - w / 2, y, w, h);
+  // border
+  ctx.strokeStyle = "#334155";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - w / 2 + 0.5, y + 0.5, w - 1, h - 1);
+  // fill
+  const ratio = Math.max(0, Math.min(1, hp / maxHp));
+  ctx.fillStyle =
+    ratio > 0.5 ? "#22c55e" : ratio > 0.25 ? "#f59e0b" : "#ef4444";
+  ctx.fillRect(x - w / 2 + pad, y + pad, (w - pad * 2) * ratio, h - pad * 2);
+  ctx.restore();
 }
