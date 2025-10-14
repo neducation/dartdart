@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>dartdart - Top Down Shooter</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background: #0e0e12;
+        overscroll-behavior: none;
+        touch-action: none; /* we'll handle gestures */
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #game {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      .hud {
+        position: fixed;
+        top: env(safe-area-inset-top);
+        left: env(safe-area-inset-left);
+        right: env(safe-area-inset-right);
+        display: flex;
+        justify-content: center;
+        color: #a0a0b0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        font-size: 14px;
+        pointer-events: none;
+        opacity: 0.8;
+      }
+      .ui-btn {
+        position: fixed;
+        top: calc(env(safe-area-inset-top) + 10px);
+        right: calc(env(safe-area-inset-right) + 10px);
+        z-index: 5;
+        background: #111827;
+        color: #e5e7eb;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        padding: 8px 12px;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        cursor: pointer;
+      }
+      #upgrade {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 10;
+        pointer-events: auto;
+      }
+      #upgrade .panel {
+        background: #0b1220;
+        color: #e5e7eb;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 16px;
+        width: min(92vw, 440px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+      }
+      #upgrade h2 {
+        margin: 0 0 12px 0;
+        font-size: 18px;
+        text-align: center;
+      }
+      #upgrade .opts {
+        display: grid;
+        gap: 10px;
+      }
+      #upgrade button {
+        font-size: 16px;
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid #334155;
+        background: #111827;
+        color: #e5e7eb;
+        cursor: pointer;
+      }
+      #upgrade button:hover {
+        background: #0f172a;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div class="hud" id="hud">dartdart</div>
+    <button id="pause-btn" class="ui-btn">Pause</button>
+    <div id="upgrade">
+      <div class="panel">
+        <h2 id="upgrade-title">Level Up! Choose an upgrade</h2>
+        <div class="opts" id="upgrade-opts"></div>
+      </div>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

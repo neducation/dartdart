@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="32" viewBox="0 0 128 32">
+  <!-- Simple 16x16 tiles laid out horizontally: player (0-16), enemy (16-32), dart (32-48), muzzle (48-64) -->
+  <defs>
+    <style>
+      .shadow { fill: #00000022; }
+    </style>
+  </defs>
+  <!-- player circle -->
+  <g id="player" transform="translate(0,0)">
+    <rect x="0" y="0" width="16" height="16" rx="4" ry="4" fill="#2dd4bf" />
+    <circle cx="12" cy="4" r="2" fill="#0f766e" />
+  </g>
+  <!-- enemy square -->
+  <g id="enemy" transform="translate(16,0)">
+    <rect x="0" y="0" width="16" height="16" rx="2" ry="2" fill="#f87171" />
+    <rect x="4" y="4" width="8" height="8" fill="#7f1d1d" />
+  </g>
+  <!-- dart -->
+  <g id="dart" transform="translate(32,0)">
+    <rect x="0" y="6" width="16" height="4" fill="#fde68a" />
+    <rect x="12" y="5" width="3" height="6" fill="#eab308" />
+  </g>
+  <!-- muzzle flash -->
+  <g id="muzzle" transform="translate(48,0)">
+    <circle cx="4" cy="8" r="3" fill="#fbbf24" />
+    <circle cx="8" cy="8" r="2" fill="#f59e0b" />
+    <circle cx="12" cy="8" r="1" fill="#d97706" />
+  </g>
+</svg>
