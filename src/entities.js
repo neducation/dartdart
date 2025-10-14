@@ -36,6 +36,11 @@ export class Projectile extends Entity {
     this.ricochet = opts.ricochet || false;
     this.hasSplit = false; // prevent infinite splits
     this.bounces = opts.bounces || 0;
+    // Elemental
+    this.fire = opts.fire || false;
+    this.ice = opts.ice || false;
+    this.lightning = opts.lightning || false;
+    this.poison = opts.poison || false;
   }
   reset(x, y, dirX, dirY, speed, damage, owner, opts = {}) {
     this.x = x;
@@ -52,6 +57,10 @@ export class Projectile extends Entity {
     this.ricochet = opts.ricochet || false;
     this.hasSplit = false;
     this.bounces = opts.bounces || 0;
+    this.fire = opts.fire || false;
+    this.ice = opts.ice || false;
+    this.lightning = opts.lightning || false;
+    this.poison = opts.poison || false;
   }
   update(dt, world) {
     // Homing: adjust velocity toward nearest enemy
@@ -99,6 +108,32 @@ export class Projectile extends Entity {
         const dy = e.y - this.y;
         const r = e.radius + 6;
         if (dx * dx + dy * dy <= r * r) {
+          // Elemental effects
+          if (this.fire) e.applyStatus("burn", 2.5, 4); // 2.5s, 4dps
+          if (this.ice) e.applyStatus("slow", 2.5, 0.5); // 2.5s, 50% speed
+          if (this.poison) e.applyStatus("poison", 4, 2); // 4s, 2dps
+          if (this.lightning) {
+            // Chain to another enemy
+            const others = world.enemies.filter((en) => !en.dead && en !== e);
+            const chain = pickNearest(e, others);
+            if (chain) {
+              let p = world.getProjectile();
+              if (!p) p = new Projectile(0, 0, 0, 0);
+              p.reset(
+                e.x,
+                e.y,
+                chain.x - e.x,
+                chain.y - e.y,
+                Math.hypot(this.vx, this.vy),
+                this.damage * 0.7,
+                this.owner,
+                {
+                  lightning: true,
+                }
+              );
+              world.spawnProjectile(p);
+            }
+          }
           const killed = e.hit(this.damage);
           // Split on impact
           if (this.split && !this.hasSplit) {
@@ -121,6 +156,10 @@ export class Projectile extends Entity {
                   homing: this.homing,
                   ricochet: this.ricochet,
                   bounces: this.bounces,
+                  fire: this.fire,
+                  ice: this.ice,
+                  lightning: this.lightning,
+                  poison: this.poison,
                 }
               );
               world.spawnProjectile(p);
@@ -247,6 +286,8 @@ export class Enemy extends Entity {
     this.state = "cooldown";
     this.timer = 0.5; // start with short wait
     this.fireInterval = 1.6; // slower than player
+    // Status effects: {type, timer, value}
+    this.status = [];
   }
 
   hit(dmg) {
@@ -256,6 +297,17 @@ export class Enemy extends Entity {
       return true;
     }
     return false;
+  }
+
+  applyStatus(type, duration, value) {
+    // If already present, refresh timer
+    let s = this.status.find((s) => s.type === type);
+    if (s) {
+      s.timer = duration;
+      s.value = value;
+    } else {
+      this.status.push({ type, timer: duration, value });
+    }
   }
 
   respawn(x, y) {
@@ -271,6 +323,25 @@ export class Enemy extends Entity {
   update(dt, world) {
     if (this.dead) return;
     const p = world.player;
+
+    // Status effects
+    let speedMod = 1;
+    for (let i = this.status.length - 1; i >= 0; i--) {
+      const s = this.status[i];
+      s.timer -= dt;
+      if (s.type === "burn") {
+        this.hp -= s.value * dt;
+      } else if (s.type === "poison") {
+        this.hp -= s.value * dt;
+      } else if (s.type === "slow") {
+        speedMod *= s.value;
+      }
+      if (s.timer <= 0) this.status.splice(i, 1);
+    }
+    if (this.hp <= 0) {
+      this.dead = true;
+      return;
+    }
 
     switch (this.state) {
       case "cooldown": {
@@ -294,8 +365,8 @@ export class Enemy extends Entity {
       case "chase": {
         // move toward player for 1 second
         const n = normalize(p.x - this.x, p.y - this.y);
-        this.vx = n.x * this.speed * 0.8;
-        this.vy = n.y * this.speed * 0.8;
+        this.vx = n.x * this.speed * 0.8 * speedMod;
+        this.vy = n.y * this.speed * 0.8 * speedMod;
         this.x += this.vx * dt;
         this.y += this.vy * dt;
         this.timer -= dt;

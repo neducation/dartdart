@@ -18,7 +18,6 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
   world.width = w;
   world.height = h;
-}
 window.addEventListener("resize", resize);
 
 // --- Projectile Pool ---
@@ -91,12 +90,7 @@ function generateUpgrades() {
     },
   });
   return choices;
-}
-    world.pauseReason = world.paused ? "manual" : "";
-    updatePauseLabel();
-  });
-  updatePauseLabel();
-}
+// ...existing code...
 
 function update(dt) {
   if (world.paused) return; // global pause
@@ -229,6 +223,7 @@ function setupLeveling() {
     showOverlay(choices);
   };
 
+
   p.onLevelUp = () => {
     // increase requirement progressively (linear for now)
     p.xpForNext = Math.floor(p.xpForNext * 1.25);
@@ -325,4 +320,3 @@ function createWaveManager() {
     },
   };
   return m;
-}
