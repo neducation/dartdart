@@ -77,6 +77,8 @@ export class Player extends Entity {
     this.xp = 0;
     this.xpForNext = 10;
     this.pets = [];
+    this.maxHp = 100;
+    this.hp = this.maxHp;
   }
   update(dt, world) {
     // movement via joystick
@@ -123,6 +125,8 @@ export class Player extends Entity {
   draw(ctx, sprites) {
     sprites.draw(ctx, "player", this.x, this.y, 32);
     for (const pet of this.pets) pet.draw(ctx, sprites);
+    // healthbar
+    drawHealthbar(ctx, this.x, this.y - 24, 32, this.hp, this.maxHp);
   }
 
   gainXP(amount) {
@@ -141,7 +145,8 @@ export class Enemy extends Entity {
     super(x, y);
     this.radius = 12;
     this.speed = 90;
-    this.hp = 25;
+    this.maxHp = 25;
+    this.hp = this.maxHp;
     this.state = "cooldown";
     this.timer = 0.5; // start with short wait
     this.fireInterval = 1.6; // slower than player
@@ -159,7 +164,8 @@ export class Enemy extends Entity {
   respawn(x, y) {
     this.x = x;
     this.y = y;
-    this.hp = 25;
+    this.maxHp = 25;
+    this.hp = this.maxHp;
     this.dead = false;
     this.state = "cooldown";
     this.timer = this.fireInterval;
@@ -214,6 +220,7 @@ export class Enemy extends Entity {
 
   draw(ctx, sprites) {
     sprites.draw(ctx, "enemy", this.x, this.y, 32);
+    drawHealthbar(ctx, this.x, this.y - 22, 28, this.hp, this.maxHp);
   }
 }
 
@@ -226,6 +233,8 @@ export class Pet extends Entity {
     this.angle = offsetAngle;
     this.fireCooldown = 0;
     this.fireRate = 1.8; // slower than player
+    this.maxHp = 30;
+    this.hp = this.maxHp;
   }
   update(dt, world, player) {
     // orbit around player
@@ -243,8 +252,28 @@ export class Pet extends Entity {
       if (target) {
         world.spawnProjectile(
           new Projectile(
+        drawHealthbar(ctx, this.x, this.y - 18, 18, this.hp, this.maxHp);
             this.x,
             this.y,
+
+    function drawHealthbar(ctx, x, y, width, hp, maxHp) {
+      ctx.save();
+      const h = 4;
+      const pad = 1;
+      const w = width;
+      // background
+      ctx.fillStyle = '#111827';
+      ctx.fillRect(x - w/2, y, w, h);
+      // border
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - w/2 + 0.5, y + 0.5, w - 1, h - 1);
+      // fill
+      const ratio = Math.max(0, Math.min(1, hp / maxHp));
+      ctx.fillStyle = ratio > 0.5 ? '#22c55e' : (ratio > 0.25 ? '#f59e0b' : '#ef4444');
+      ctx.fillRect(x - w/2 + pad, y + pad, (w - pad*2) * ratio, h - pad*2);
+      ctx.restore();
+    }
             target.x - this.x,
             target.y - this.y,
             280,

@@ -32,7 +32,7 @@ const world = {
   effects: [],
   wave: null,
   paused: false,
-  pauseReason: '',
+  pauseReason: "",
   spawnProjectile(p) {
     this.projectiles.push(p);
   },
@@ -53,14 +53,14 @@ async function boot() {
   engine.start();
 
   // Pause/Resume button
-  const pauseBtn = document.getElementById('pause-btn');
+  const pauseBtn = document.getElementById("pause-btn");
   const updatePauseLabel = () => {
-    pauseBtn.textContent = world.paused ? 'Resume' : 'Pause';
+    pauseBtn.textContent = world.paused ? "Resume" : "Pause";
   };
-  pauseBtn.addEventListener('click', () => {
+  pauseBtn.addEventListener("click", () => {
     // manual toggle only when not overlay-paused
     world.paused = !world.paused;
-    world.pauseReason = world.paused ? 'manual' : '';
+    world.pauseReason = world.paused ? "manual" : "";
     updatePauseLabel();
   });
   updatePauseLabel();
@@ -131,7 +131,7 @@ function render() {
   if (hud) {
     const p = world.player;
     const wave = world.wave?.index ?? 0;
-    const pausedTxt = world.paused ? ' | PAUSED' : '';
+    const pausedTxt = world.paused ? " | PAUSED" : "";
     hud.textContent = `dartdart  |  Wave ${wave}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}`;
   }
 }
@@ -158,7 +158,7 @@ function setupLeveling() {
   const p = world.player;
   const overlay = document.getElementById("upgrade");
   const optsEl = document.getElementById("upgrade-opts");
-  const titleEl = document.getElementById('upgrade-title');
+  const titleEl = document.getElementById("upgrade-title");
   const showOverlay = (choices) => {
     // clear
     optsEl.innerHTML = "";
@@ -171,11 +171,11 @@ function setupLeveling() {
           c.apply();
           overlay.style.display = "none";
           // resume if paused for overlay
-          if (world.pauseReason === 'levelup' || world.pauseReason === 'wave') {
+          if (world.pauseReason === "levelup" || world.pauseReason === "wave") {
             world.paused = false;
-            world.pauseReason = '';
-            const pauseBtn = document.getElementById('pause-btn');
-            if (pauseBtn) pauseBtn.textContent = 'Pause';
+            world.pauseReason = "";
+            const pauseBtn = document.getElementById("pause-btn");
+            if (pauseBtn) pauseBtn.textContent = "Pause";
           }
         },
         { once: true }
@@ -195,8 +195,8 @@ function setupLeveling() {
     p.xpForNext = Math.floor(p.xpForNext * 1.25);
     // pause and show overlay
     world.paused = true;
-    world.pauseReason = 'levelup';
-    if (titleEl) titleEl.textContent = 'Level Up! Choose an upgrade';
+    world.pauseReason = "levelup";
+    if (titleEl) titleEl.textContent = "Level Up! Choose an upgrade";
     chooseUpgrades();
   };
 }
@@ -243,37 +243,42 @@ function createWaveManager() {
       this.spawnCooldown = 0;
       // On every wave start, pause and grant a random upgrade automatically
       world.paused = true;
-      world.pauseReason = 'wave';
-      const overlay = document.getElementById('upgrade');
-      const titleEl = document.getElementById('upgrade-title');
-      if (titleEl) titleEl.textContent = `Wave ${this.index} Reached! Pick a bonus`;
+      world.pauseReason = "wave";
+      const overlay = document.getElementById("upgrade");
+      const titleEl = document.getElementById("upgrade-title");
+      if (titleEl)
+        titleEl.textContent = `Wave ${this.index} Reached! Pick a bonus`;
       const choices = generateUpgrades();
       // Show overlay with random 3 (already 3); user must pick to resume
-      const optsEl = document.getElementById('upgrade-opts');
-      if (optsEl) optsEl.innerHTML = '';
+      const optsEl = document.getElementById("upgrade-opts");
+      if (optsEl) optsEl.innerHTML = "";
       // reuse setup in setupLeveling
-      const buttons = choices.map(c => c);
+      const buttons = choices.map((c) => c);
       const show = () => {
-        const overlayEl = document.getElementById('upgrade');
-        const opts = document.getElementById('upgrade-opts');
+        const overlayEl = document.getElementById("upgrade");
+        const opts = document.getElementById("upgrade-opts");
         if (!overlayEl || !opts) return;
-        opts.innerHTML = '';
+        opts.innerHTML = "";
         for (const c of buttons) {
-          const btn = document.createElement('button');
+          const btn = document.createElement("button");
           btn.textContent = c.title;
-          btn.addEventListener('click', () => {
-            c.apply();
-            overlayEl.style.display = 'none';
-            if (world.pauseReason === 'wave') {
-              world.paused = false;
-              world.pauseReason = '';
-              const pauseBtn = document.getElementById('pause-btn');
-              if (pauseBtn) pauseBtn.textContent = 'Pause';
-            }
-          }, { once: true });
+          btn.addEventListener(
+            "click",
+            () => {
+              c.apply();
+              overlayEl.style.display = "none";
+              if (world.pauseReason === "wave") {
+                world.paused = false;
+                world.pauseReason = "";
+                const pauseBtn = document.getElementById("pause-btn");
+                if (pauseBtn) pauseBtn.textContent = "Pause";
+              }
+            },
+            { once: true }
+          );
           opts.appendChild(btn);
         }
-        overlayEl.style.display = 'flex';
+        overlayEl.style.display = "flex";
       };
       show();
     },
