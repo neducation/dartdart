@@ -32,6 +32,7 @@ const world = {
   obstacles: [], // { x, y, w, h }
   levelUpAnimation: 0, // Animation timer for level up
   waveCompleteAnimation: 0, // Animation timer for wave complete
+  lightningStrikes: [], // { points: [{x, y}], timer, color }
   // Projectile pool
   _projectilePool: [],
   getProjectile() {
