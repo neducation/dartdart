@@ -45,6 +45,7 @@ export class Projectile extends Entity {
     const n = normalize(dirX, dirY);
     this.vx = n.x * speed;
     this.vy = n.y * speed;
+    this.baseSpeed = speed; // Store original speed
     this.damage = damage;
     this.owner = owner;
     this.life = 3;
@@ -65,6 +66,7 @@ export class Projectile extends Entity {
     const n = normalize(dirX, dirY);
     this.vx = n.x * speed;
     this.vy = n.y * speed;
+    this.baseSpeed = speed; // Store original speed
     this.damage = damage;
     this.owner = owner;
     this.life = 3;
@@ -87,11 +89,37 @@ export class Projectile extends Entity {
         world.enemies.filter((e) => !e.dead)
       );
       if (target) {
+        // Get current speed
+        const currentSpeed = Math.hypot(this.vx, this.vy);
+        // Use base speed or current speed, whichever is higher (prevents slowdown)
+        const targetSpeed = Math.max(currentSpeed, this.baseSpeed);
+
+        // Get direction to target
         const n = normalize(target.x - this.x, target.y - this.y);
-        // Lerp velocity toward target
-        this.vx = this.vx * 0.85 + n.x * Math.hypot(this.vx, this.vy) * 0.15;
-        this.vy = this.vy * 0.85 + n.y * Math.hypot(this.vx, this.vy) * 0.15;
+
+        // Get current direction
+        const currentDir = normalize(this.vx, this.vy);
+
+        // Calculate angle between current direction and target
+        const dotProduct = currentDir.x * n.x + currentDir.y * n.y;
+
+        // Only adjust if not turning more than 90 degrees (prevents 180° turns)
+        if (dotProduct > 0) {
+          // Gentle turn rate - maintains speed
+          this.vx = this.vx * 0.92 + n.x * targetSpeed * 0.08;
+          this.vy = this.vy * 0.92 + n.y * targetSpeed * 0.08;
+
+          // Ensure we maintain minimum speed (prevents slowdown)
+          const newSpeed = Math.hypot(this.vx, this.vy);
+          if (newSpeed < this.baseSpeed * 0.95) {
+            const scale = this.baseSpeed / newSpeed;
+            this.vx *= scale;
+            this.vy *= scale;
+          }
+        }
       }
+      // If no target, bullet continues in current direction at full speed
+      // No changes needed - velocity is already set
     }
     this.x += this.vx * dt;
     this.y += this.vy * dt;
