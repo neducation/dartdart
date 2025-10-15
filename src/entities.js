@@ -232,11 +232,15 @@ export class Player extends Entity {
         world.enemies.filter((e) => !e.dead)
       );
       if (target) {
-        // Use projectile pool and perks
+        // Use projectile pool and perks (including elemental)
         let opts = {};
         if (this.perkSplit) opts.split = true;
         if (this.perkHoming) opts.homing = true;
         if (this.perkRicochet) opts.ricochet = true;
+        if (this.perkFire) opts.fire = true;
+        if (this.perkIce) opts.ice = true;
+        if (this.perkLightning) opts.lightning = true;
+        if (this.perkPoison) opts.poison = true;
         let p = world.getProjectile();
         if (!p) p = new Projectile(0, 0, 0, 0);
         p.reset(
@@ -418,11 +422,15 @@ export class Pet extends Entity {
         world.enemies.filter((e) => !e.dead)
       );
       if (target) {
-        // Use projectile pool and perks
+        // Use projectile pool and perks (including elemental)
         let opts = {};
         if (player.perkSplit) opts.split = true;
         if (player.perkHoming) opts.homing = true;
         if (player.perkRicochet) opts.ricochet = true;
+        if (player.perkFire) opts.fire = true;
+        if (player.perkIce) opts.ice = true;
+        if (player.perkLightning) opts.lightning = true;
+        if (player.perkPoison) opts.poison = true;
         let p = world.getProjectile();
         if (!p) p = new Projectile(0, 0, 0, 0);
         p.reset(
@@ -466,4 +474,86 @@ function drawHealthbar(ctx, x, y, width, hp, maxHp) {
     ratio > 0.5 ? "#22c55e" : ratio > 0.25 ? "#f59e0b" : "#ef4444";
   ctx.fillRect(x - w / 2 + pad, y + pad, (w - pad * 2) * ratio, h - pad * 2);
   ctx.restore();
+}
+
+// --- New Enemy Types ---
+
+// Fast, low-HP enemy
+export class FastEnemy extends Enemy {
+  constructor(x, y) {
+    super(x, y);
+    this.speed = 160;
+    this.maxHp = 15;
+    this.hp = this.maxHp;
+    this.radius = 10;
+    this.fireInterval = 2.0;
+    this.enemyType = "fast";
+  }
+
+  draw(ctx, sprites) {
+    // Draw with slight red tint
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    sprites.draw(ctx, "enemy", this.x, this.y, 28);
+    ctx.restore();
+    drawHealthbar(ctx, this.x, this.y - 20, 24, this.hp, this.maxHp);
+  }
+}
+
+// Tanky, slow enemy
+export class TankEnemy extends Enemy {
+  constructor(x, y) {
+    super(x, y);
+    this.speed = 50;
+    this.maxHp = 60;
+    this.hp = this.maxHp;
+    this.radius = 16;
+    this.fireInterval = 2.5;
+    this.enemyType = "tank";
+  }
+
+  draw(ctx, sprites) {
+    // Draw larger
+    sprites.draw(ctx, "enemy", this.x, this.y, 40);
+    drawHealthbar(ctx, this.x, this.y - 26, 36, this.hp, this.maxHp);
+  }
+}
+
+// Splits into 2 smaller enemies on death
+export class SplitterEnemy extends Enemy {
+  constructor(x, y, isSplit = false) {
+    super(x, y);
+    this.speed = 100;
+    this.maxHp = isSplit ? 12 : 30;
+    this.hp = this.maxHp;
+    this.radius = isSplit ? 10 : 14;
+    this.fireInterval = 1.8;
+    this.isSplit = isSplit;
+    this.enemyType = "splitter";
+  }
+
+  hit(dmg) {
+    this.hp -= dmg;
+    if (this.hp <= 0) {
+      this.dead = true;
+      return true;
+    }
+    return false;
+  }
+
+  draw(ctx, sprites) {
+    const size = this.isSplit ? 26 : 34;
+    ctx.save();
+    ctx.globalAlpha = this.isSplit ? 0.7 : 1;
+    sprites.draw(ctx, "enemy", this.x, this.y, size);
+    ctx.restore();
+    drawHealthbar(
+      ctx,
+      this.x,
+      this.y - (this.isSplit ? 18 : 22),
+      this.isSplit ? 24 : 30,
+      this.hp,
+      this.maxHp
+    );
+  }
 }

@@ -1,7 +1,14 @@
 import { Engine } from "./engine.js";
 import { VirtualJoystick } from "./input.js";
 import { loadSpriteSheet } from "./sprites.js";
-import { Player, Enemy, Pet } from "./entities.js";
+import {
+  Player,
+  Enemy,
+  Pet,
+  FastEnemy,
+  TankEnemy,
+  SplitterEnemy,
+} from "./entities.js";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
@@ -16,6 +23,8 @@ const world = {
   enemies: [],
   projectiles: [],
   effects: [],
+  particles: [], // New: particle effects
+  screenShake: 0, // New: screen shake intensity
   paused: false,
   pauseReason: "",
   wave: null,
@@ -227,7 +236,19 @@ function createWaveManager() {
         );
         for (let i = 0; i < toSpawn; i++) {
           const [x, y] = randomEdgeSpawn();
-          world.enemies.push(new Enemy(x, y));
+          // Spawn different enemy types based on wave
+          const rand = Math.random();
+          let enemy;
+          if (this.index >= 5 && rand < 0.15) {
+            enemy = new TankEnemy(x, y);
+          } else if (this.index >= 3 && rand < 0.35) {
+            enemy = new FastEnemy(x, y);
+          } else if (this.index >= 4 && rand < 0.55) {
+            enemy = new SplitterEnemy(x, y);
+          } else {
+            enemy = new Enemy(x, y);
+          }
+          world.enemies.push(enemy);
         }
         this.spawnCooldown = Math.max(0.5, 1.6 - this.index * 0.08);
       }
@@ -243,7 +264,34 @@ function update(dt) {
   world.player.update(dt, world);
 
   for (const e of world.enemies) e.update(dt, world);
-  world.enemies = world.enemies.filter((e) => !e.dead);
+
+  // Handle enemy deaths and splitters
+  const newEnemies = [];
+  world.enemies = world.enemies.filter((e) => {
+    if (e.dead) {
+      // Spawn particles on death
+      spawnParticles(e.x, e.y, 8, "#ef4444");
+      world.screenShake = Math.max(world.screenShake, 3);
+
+      // Splitter enemies split into 2 smaller ones
+      if (e.enemyType === "splitter" && !e.isSplit) {
+        for (let i = 0; i < 2; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const offset = 20;
+          newEnemies.push(
+            new SplitterEnemy(
+              e.x + Math.cos(angle) * offset,
+              e.y + Math.sin(angle) * offset,
+              true
+            )
+          );
+        }
+      }
+      return false;
+    }
+    return true;
+  });
+  world.enemies.push(...newEnemies);
 
   if (world.wave) world.wave.update(dt);
 
@@ -258,13 +306,31 @@ function update(dt) {
 
   for (const fx of world.effects) fx.t -= dt;
   world.effects = world.effects.filter((fx) => fx.t > 0);
+
+  // Update particles
+  for (const particle of world.particles) {
+    particle.x += particle.vx * dt;
+    particle.y += particle.vy * dt;
+    particle.life -= dt;
+  }
+  world.particles = world.particles.filter((p) => p.life > 0);
+
+  // Decay screen shake
+  world.screenShake = Math.max(0, world.screenShake - dt * 15);
 }
 
 function render() {
   ctx.clearRect(0, 0, world.width, world.height);
 
-  // background grid
+  // Apply screen shake
   ctx.save();
+  if (world.screenShake > 0) {
+    const shakeX = (Math.random() - 0.5) * world.screenShake;
+    const shakeY = (Math.random() - 0.5) * world.screenShake;
+    ctx.translate(shakeX, shakeY);
+  }
+
+  // background grid
   ctx.globalAlpha = 0.15;
   ctx.strokeStyle = "#1f2937";
   for (let x = 0; x < world.width; x += 32) {
@@ -279,11 +345,21 @@ function render() {
     ctx.lineTo(world.width, y + 0.5);
     ctx.stroke();
   }
-  ctx.restore();
+  ctx.globalAlpha = 1;
 
   world.player.draw(ctx, world.sprites);
   for (const e of world.enemies) e.draw(ctx, world.sprites);
   for (const p of world.projectiles) p.draw(ctx, world.sprites);
+
+  // Draw particles
+  for (const particle of world.particles) {
+    const alpha = Math.max(0, particle.life / 0.5);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = particle.color;
+    ctx.fillRect(particle.x - 2, particle.y - 2, 4, 4);
+    ctx.restore();
+  }
 
   for (const fx of world.effects) {
     const alpha = Math.max(0, Math.min(1, fx.t / 0.08));
@@ -293,6 +369,8 @@ function render() {
     ctx.restore();
   }
 
+  ctx.restore(); // End screen shake
+
   world.input.draw(ctx);
 
   const hud = document.getElementById("hud");
@@ -301,6 +379,21 @@ function render() {
     const wave = world.wave?.index ?? 0;
     const pausedTxt = world.paused ? " | PAUSED" : "";
     hud.textContent = `dartdart  |  Wave ${wave}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}`;
+  }
+}
+
+function spawnParticles(x, y, count, color) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 80 + Math.random() * 120;
+    world.particles.push({
+      x,
+      y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 0.3 + Math.random() * 0.4,
+      color,
+    });
   }
 }
 
