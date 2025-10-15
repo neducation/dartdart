@@ -51,14 +51,19 @@ export class Projectile extends Entity {
     this.life = 3;
     this.split = opts.split || false;
     this.homing = opts.homing || false;
-    this.ricochet = opts.ricochet || false;
+    this.bounce = opts.bounce || false;
     this.hasSplit = false; // prevent infinite splits
-    this.bounces = opts.bounces || 0;
+    this.bounceCount = 0;
+    this.maxBounces = opts.maxBounces || 0;
+    this.piercing = opts.piercing || false;
+    this.pierceCount = 0;
+    this.maxPierce = opts.maxPierce || 0;
     // Elemental
     this.fire = opts.fire || false;
     this.ice = opts.ice || false;
     this.lightning = opts.lightning || false;
     this.poison = opts.poison || false;
+    this.lightningLevel = opts.lightningLevel || 1;
   }
   reset(x, y, dirX, dirY, speed, damage, owner, opts = {}) {
     this.x = x;
@@ -73,13 +78,18 @@ export class Projectile extends Entity {
     this.dead = false;
     this.split = opts.split || false;
     this.homing = opts.homing || false;
-    this.ricochet = opts.ricochet || false;
+    this.bounce = opts.bounce || false;
     this.hasSplit = false;
-    this.bounces = opts.bounces || 0;
+    this.bounceCount = 0;
+    this.maxBounces = opts.maxBounces || 0;
+    this.piercing = opts.piercing || false;
+    this.pierceCount = 0;
+    this.maxPierce = opts.maxPierce || 0;
     this.fire = opts.fire || false;
     this.ice = opts.ice || false;
     this.lightning = opts.lightning || false;
     this.poison = opts.poison || false;
+    this.lightningLevel = opts.lightningLevel || 1;
   }
   update(dt, world) {
     // Homing: adjust velocity toward nearest enemy
@@ -132,23 +142,27 @@ export class Projectile extends Entity {
       return;
     }
 
-    // Ricochet: bounce off walls
-    if (this.ricochet && this.owner === "player" && this.bounces < 2) {
+    // Bounce: bounce off walls
+    if (
+      this.bounce &&
+      this.owner === "player" &&
+      this.bounceCount < this.maxBounces
+    ) {
       let bounced = false;
-      if (this.x < 0 || this.x > world.width) {
+      if (this.x < 12 || this.x > world.width - 12) {
         this.vx = -this.vx;
-        this.bounces++;
+        this.bounceCount++;
         bounced = true;
       }
-      if (this.y < 0 || this.y > world.height) {
+      if (this.y < 12 || this.y > world.height - 12) {
         this.vy = -this.vy;
-        this.bounces++;
+        this.bounceCount++;
         bounced = true;
       }
       if (bounced) {
-        // Clamp inside bounds
-        this.x = Math.max(0, Math.min(world.width, this.x));
-        this.y = Math.max(0, Math.min(world.height, this.y));
+        // Clamp inside bounds with better margin
+        this.x = Math.max(12, Math.min(world.width - 12, this.x));
+        this.y = Math.max(12, Math.min(world.height - 12, this.y));
       }
     }
     if (this.life <= 0) this.dead = true;
@@ -161,42 +175,74 @@ export class Projectile extends Entity {
         const dy = e.y - this.y;
         const r = e.radius + 6;
         if (dx * dx + dy * dy <= r * r) {
-          // Elemental effects
-          if (this.fire) e.applyStatus("burn", 2.5, 4); // 2.5s, 4dps
-          if (this.ice) e.applyStatus("slow", 2.5, 0.5); // 2.5s, 50% speed
-          if (this.poison) e.applyStatus("poison", 4, 2); // 4s, 2dps
+          // Elemental effects with level scaling
+          const p = world.player;
+          if (this.fire) {
+            const level = p.perkLevels?.fire || 1;
+            if (level === 1) {
+              e.applyStatus("burn", 2.5, 4); // 2.5s, 4dps
+            } else {
+              e.applyStatus("burn", 4, 7); // 4s, 7dps (Fire II)
+            }
+          }
+          if (this.ice) {
+            const level = p.perkLevels?.ice || 1;
+            if (level === 1) {
+              e.applyStatus("slow", 2.5, 0.5); // 2.5s, 50% slow
+            } else {
+              e.applyStatus("slow", 4, 0.3); // 4s, 70% slow (Ice II)
+            }
+          }
+          if (this.poison) {
+            const level = p.perkLevels?.poison || 1;
+            if (level === 1) {
+              e.applyStatus("poison", 4, 2); // 4s, 2dps
+            } else {
+              e.applyStatus("poison", 6, 4); // 6s, 4dps (Poison II)
+            }
+          }
           if (this.lightning) {
-            // Chain to another enemy (chain projectile does NOT chain again)
+            // Chain to another enemy with level scaling
+            const level = p.perkLevels?.lightning || 1;
+            const chainCount = level === 1 ? 1 : 2; // Lightning I: 1 chain, Lightning II: 2 chains
+            const chainDamage = level === 1 ? 0.7 : 0.85;
+
             const others = world.enemies.filter((en) => !en.dead && en !== e);
-            const chain = pickNearest(e, others);
-            if (chain) {
-              let p = world.getProjectile();
-              if (!p) p = new Projectile(0, 0, 0, 0);
-              p.reset(
-                e.x,
-                e.y,
-                chain.x - e.x,
-                chain.y - e.y,
-                Math.hypot(this.vx, this.vy),
-                this.damage * 0.7,
-                this.owner,
-                {
-                  lightning: false, // Prevent infinite chaining!
-                }
+            for (let i = 0; i < chainCount && i < others.length; i++) {
+              const chain = pickNearest(
+                i === 0 ? e : others[i - 1],
+                others.filter((en) => !others.slice(0, i).includes(en))
               );
-              world.spawnProjectile(p);
+              if (chain) {
+                let proj = world.getProjectile();
+                if (!proj) proj = new Projectile(0, 0, 0, 0);
+                proj.reset(
+                  i === 0 ? e.x : others[i - 1].x,
+                  i === 0 ? e.y : others[i - 1].y,
+                  chain.x - (i === 0 ? e.x : others[i - 1].x),
+                  chain.y - (i === 0 ? e.y : others[i - 1].y),
+                  Math.hypot(this.vx, this.vy),
+                  this.damage * chainDamage,
+                  this.owner,
+                  {
+                    lightning: false, // Prevent infinite chaining!
+                  }
+                );
+                world.spawnProjectile(proj);
+              }
             }
           }
           const killed = e.hit(this.damage);
+
           // Split on impact
           if (this.split && !this.hasSplit) {
             for (let i = 0; i < 2; i++) {
               const angle =
                 Math.atan2(this.vy, this.vx) +
                 (i === 0 ? Math.PI / 6 : -Math.PI / 6);
-              let p = world.getProjectile();
-              if (!p) p = new Projectile(0, 0, 0, 0);
-              p.reset(
+              let proj = world.getProjectile();
+              if (!proj) proj = new Projectile(0, 0, 0, 0);
+              proj.reset(
                 this.x,
                 this.y,
                 Math.cos(angle),
@@ -207,19 +253,31 @@ export class Projectile extends Entity {
                 {
                   split: false,
                   homing: this.homing,
-                  ricochet: this.ricochet,
-                  bounces: this.bounces,
+                  bounce: this.bounce,
+                  maxBounces: this.maxBounces,
+                  bounceCount: this.bounceCount,
+                  piercing: this.piercing,
+                  maxPierce: this.maxPierce,
                   fire: this.fire,
                   ice: this.ice,
                   lightning: this.lightning,
                   poison: this.poison,
+                  lightningLevel: this.lightningLevel,
                 }
               );
-              world.spawnProjectile(p);
+              world.spawnProjectile(proj);
             }
             this.hasSplit = true;
           }
-          this.dead = true;
+
+          // Piercing: continue through enemies
+          if (this.piercing && this.pierceCount < this.maxPierce) {
+            this.pierceCount++;
+            // Don't set dead, continue to next enemy
+          } else {
+            this.dead = true;
+          }
+
           if (killed) {
             // award XP to player and notify wave manager
             world.player.gainXP(1);
@@ -307,11 +365,14 @@ export class Player extends Entity {
       this.y = newY;
     }
 
-    // clamp to world bounds
-    this.x = Math.max(this.radius, Math.min(world.width - this.radius, this.x));
+    // clamp to world bounds with better margins
+    this.x = Math.max(
+      this.radius + 8,
+      Math.min(world.width - this.radius - 8, this.x)
+    );
     this.y = Math.max(
-      this.radius,
-      Math.min(world.height - this.radius, this.y)
+      this.radius + 8,
+      Math.min(world.height - this.radius - 8, this.y)
     );
 
     // firing to nearest enemy every 1s
@@ -326,10 +387,20 @@ export class Player extends Entity {
         let opts = {};
         if (this.perkSplit) opts.split = true;
         if (this.perkHoming) opts.homing = true;
-        if (this.perkRicochet) opts.ricochet = true;
+        if (this.perkBounce) {
+          opts.bounce = true;
+          opts.maxBounces = this.maxBounces || 1;
+        }
+        if (this.perkPiercing) {
+          opts.piercing = true;
+          opts.maxPierce = this.maxPierce || 1;
+        }
         if (this.perkFire) opts.fire = true;
         if (this.perkIce) opts.ice = true;
-        if (this.perkLightning) opts.lightning = true;
+        if (this.perkLightning) {
+          opts.lightning = true;
+          opts.lightningLevel = this.perkLevels?.lightning || 1;
+        }
         if (this.perkPoison) opts.poison = true;
         let p = world.getProjectile();
         if (!p) p = new Projectile(0, 0, 0, 0);
@@ -539,10 +610,20 @@ export class Pet extends Entity {
         let opts = {};
         if (player.perkSplit) opts.split = true;
         if (player.perkHoming) opts.homing = true;
-        if (player.perkRicochet) opts.ricochet = true;
+        if (player.perkBounce) {
+          opts.bounce = true;
+          opts.maxBounces = player.maxBounces || 1;
+        }
+        if (player.perkPiercing) {
+          opts.piercing = true;
+          opts.maxPierce = player.maxPierce || 1;
+        }
         if (player.perkFire) opts.fire = true;
         if (player.perkIce) opts.ice = true;
-        if (player.perkLightning) opts.lightning = true;
+        if (player.perkLightning) {
+          opts.lightning = true;
+          opts.lightningLevel = player.perkLevels?.lightning || 1;
+        }
         if (player.perkPoison) opts.poison = true;
         let p = world.getProjectile();
         if (!p) p = new Projectile(0, 0, 0, 0);

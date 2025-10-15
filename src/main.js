@@ -65,104 +65,231 @@ resize();
 function generateUpgrades() {
   const p = world.player;
   const choices = [];
+
+  // Initialize perk levels if they don't exist
+  if (!p.perkLevels) {
+    p.perkLevels = {
+      bulletSpeed: 0,
+      fireRate: 0,
+      bounce: 0,
+      piercing: 0,
+      split: 0,
+      homing: 0,
+      fire: 0,
+      ice: 0,
+      lightning: 0,
+      poison: 0,
+    };
+  }
+
+  // PROGRESSIVE UPGRADES (Can be upgraded multiple times)
+
+  // Bullet Speed (unlimited)
   choices.push({
     icon: "⚡",
-    title: `Bullet Speed +20% (now ${Math.round(p.projectileSpeed * 1.2)})`,
+    title: `Bullet Speed +20% (Lv ${p.perkLevels.bulletSpeed + 1})`,
+    description: "Faster bullets",
     apply: () => {
       p.projectileSpeed = Math.round(p.projectileSpeed * 1.2);
+      p.perkLevels.bulletSpeed++;
       updateStatsPanel();
     },
   });
+
+  // Fire Rate (unlimited)
   choices.push({
     icon: "🔫",
-    title: `Fire Rate +15% (faster)`,
+    title: `Fire Rate +15% (Lv ${p.perkLevels.fireRate + 1})`,
+    description: "Shoot faster",
     apply: () => {
-      p.fireRate = Math.max(0.2, +(p.fireRate * 0.85).toFixed(2));
+      p.fireRate = Math.max(0.15, +(p.fireRate * 0.85).toFixed(2));
+      p.perkLevels.fireRate++;
       updateStatsPanel();
     },
   });
+
+  // Pets (unlimited)
   choices.push({
     icon: "🐾",
-    title: `+1 Pet Companion`,
+    title: `+1 Pet Companion (${p.pets.length} pets)`,
+    description: "Pet shoots with you",
     apply: () => {
       p.pets.push(new Pet(Math.random() * Math.PI * 2));
       updateStatsPanel();
     },
   });
-  // New bullet perks
-  choices.push({
-    icon: "💥",
-    title: `Bullets Split on Impact`,
-    apply: () => {
-      p.perkSplit = true;
-      updateStatsPanel();
-    },
-  });
-  choices.push({
-    icon: "🎯",
-    title: `Bullets Track Enemies`,
-    apply: () => {
-      p.perkHoming = true;
-      updateStatsPanel();
-    },
-  });
-  choices.push({
-    icon: "🔄",
-    title: `Bullets Ricochet`,
-    apply: () => {
-      p.perkRicochet = true;
-      updateStatsPanel();
-    },
-  });
-  // Elemental perks
-  choices.push({
-    icon: "🔥",
-    title: `Bullets inflict FIRE (burn)`,
-    apply: () => {
-      p.perkFire = true;
-      updateStatsPanel();
-    },
-  });
-  choices.push({
-    icon: "❄️",
-    title: `Bullets inflict ICE (slow)`,
-    apply: () => {
-      p.perkIce = true;
-      updateStatsPanel();
-    },
-  });
-  choices.push({
-    icon: "⚡",
-    title: `Bullets inflict LIGHTNING (chain)`,
-    apply: () => {
-      p.perkLightning = true;
-      updateStatsPanel();
-    },
-  });
-  choices.push({
-    icon: "☠️",
-    title: `Bullets inflict POISON (DoT)`,
-    apply: () => {
-      p.perkPoison = true;
-      updateStatsPanel();
-    },
-  });
-  // Debug: grant all
-  choices.push({
-    icon: "🎁",
-    title: `DEBUG: Grant ALL Perks`,
-    apply: () => {
-      p.perkSplit = true;
-      p.perkHoming = true;
-      p.perkRicochet = true;
-      p.perkFire = true;
-      p.perkIce = true;
-      p.perkLightning = true;
-      p.perkPoison = true;
-      updateStatsPanel();
-    },
-  });
-  return choices;
+
+  // Bounce (max 3 levels)
+  if (p.perkLevels.bounce < 3) {
+    choices.push({
+      icon: "🪃",
+      title: `Bounce ${p.perkLevels.bounce === 0 ? "" : "+"} (Lv ${
+        p.perkLevels.bounce + 1
+      })`,
+      description:
+        p.perkLevels.bounce === 0
+          ? "Bullets bounce off walls"
+          : `Bounce ${p.perkLevels.bounce + 1} more times`,
+      apply: () => {
+        p.perkBounce = true;
+        p.perkLevels.bounce++;
+        p.maxBounces = p.perkLevels.bounce;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // Piercing (max 3 levels)
+  if (p.perkLevels.piercing < 3) {
+    choices.push({
+      icon: "🎯",
+      title: `Piercing ${p.perkLevels.piercing === 0 ? "" : "+"} (Lv ${
+        p.perkLevels.piercing + 1
+      })`,
+      description:
+        p.perkLevels.piercing === 0
+          ? "Bullets pierce through enemies"
+          : `Pierce ${p.perkLevels.piercing + 1} more enemies`,
+      apply: () => {
+        p.perkPiercing = true;
+        p.perkLevels.piercing++;
+        p.maxPierce = p.perkLevels.piercing;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // ONE-TIME PERKS
+
+  // Split (one-time)
+  if (!p.perkSplit) {
+    choices.push({
+      icon: "�",
+      title: `Split Shot`,
+      description: "Bullets split into 2 on impact",
+      apply: () => {
+        p.perkSplit = true;
+        p.perkLevels.split = 1;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // Homing (one-time)
+  if (!p.perkHoming) {
+    choices.push({
+      icon: "🧲",
+      title: `Homing`,
+      description: "Bullets track enemies",
+      apply: () => {
+        p.perkHoming = true;
+        p.perkLevels.homing = 1;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // ELEMENTAL PERKS (Progressive, max 2 levels each)
+
+  // Fire
+  if (p.perkLevels.fire === 0) {
+    choices.push({
+      icon: "🔥",
+      title: `Fire I`,
+      description: "Bullets burn enemies (2.5s, 4 DPS)",
+      apply: () => {
+        p.perkFire = true;
+        p.perkLevels.fire = 1;
+        updateStatsPanel();
+      },
+    });
+  } else if (p.perkLevels.fire === 1) {
+    choices.push({
+      icon: "🔥",
+      title: `Fire II`,
+      description: "Stronger burn (4s, 7 DPS)",
+      apply: () => {
+        p.perkLevels.fire = 2;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // Ice
+  if (p.perkLevels.ice === 0) {
+    choices.push({
+      icon: "❄️",
+      title: `Ice I`,
+      description: "Bullets slow enemies (2.5s, 50% slow)",
+      apply: () => {
+        p.perkIce = true;
+        p.perkLevels.ice = 1;
+        updateStatsPanel();
+      },
+    });
+  } else if (p.perkLevels.ice === 1) {
+    choices.push({
+      icon: "❄️",
+      title: `Ice II`,
+      description: "Stronger slow (4s, 70% slow)",
+      apply: () => {
+        p.perkLevels.ice = 2;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // Lightning
+  if (p.perkLevels.lightning === 0) {
+    choices.push({
+      icon: "⚡",
+      title: `Lightning I`,
+      description: "Bullets chain to 1 enemy (70% damage)",
+      apply: () => {
+        p.perkLightning = true;
+        p.perkLevels.lightning = 1;
+        updateStatsPanel();
+      },
+    });
+  } else if (p.perkLevels.lightning === 1) {
+    choices.push({
+      icon: "⚡",
+      title: `Lightning II`,
+      description: "Chain to 2 enemies (85% damage)",
+      apply: () => {
+        p.perkLevels.lightning = 2;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // Poison
+  if (p.perkLevels.poison === 0) {
+    choices.push({
+      icon: "☠️",
+      title: `Poison I`,
+      description: "Bullets poison enemies (4s, 2 DPS)",
+      apply: () => {
+        p.perkPoison = true;
+        p.perkLevels.poison = 1;
+        updateStatsPanel();
+      },
+    });
+  } else if (p.perkLevels.poison === 1) {
+    choices.push({
+      icon: "☠️",
+      title: `Poison II`,
+      description: "Stronger poison (6s, 4 DPS)",
+      apply: () => {
+        p.perkLevels.poison = 2;
+        updateStatsPanel();
+      },
+    });
+  }
+
+  // Shuffle and return 3 random choices
+  const shuffled = choices.sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, 3);
 }
 
 // --- Leveling overlay ---
@@ -797,17 +924,51 @@ function spawnParticles(x, y, count, color) {
 
 function randomEdgeSpawn() {
   const edge = Math.floor(Math.random() * 4);
-  const pad = 40;
-  switch (edge) {
-    case 0:
-      return [Math.random() * world.width, pad];
-    case 1:
-      return [Math.random() * world.width, world.height - pad];
-    case 2:
-      return [pad, Math.random() * world.height];
-    case 3:
-      return [world.width - pad, Math.random() * world.height];
-  }
+  const pad = 50; // More padding from edge
+  let x, y;
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  // Try to find a position not inside an obstacle
+  do {
+    switch (edge) {
+      case 0:
+        x = Math.random() * world.width;
+        y = pad;
+        break;
+      case 1:
+        x = Math.random() * world.width;
+        y = world.height - pad;
+        break;
+      case 2:
+        x = pad;
+        y = Math.random() * world.height;
+        break;
+      case 3:
+        x = world.width - pad;
+        y = Math.random() * world.height;
+        break;
+    }
+
+    // Check if spawn point is inside an obstacle
+    let insideObstacle = false;
+    for (const obs of world.obstacles) {
+      if (
+        x > obs.x - 30 &&
+        x < obs.x + obs.w + 30 &&
+        y > obs.y - 30 &&
+        y < obs.y + obs.h + 30
+      ) {
+        insideObstacle = true;
+        break;
+      }
+    }
+
+    if (!insideObstacle) break;
+    attempts++;
+  } while (attempts < maxAttempts);
+
+  return [x, y];
 }
 
 // --- Stats Panel ---
@@ -818,22 +979,49 @@ function updateStatsPanel() {
   const p = world.player;
   if (!p) return;
 
+  if (!p.perkLevels) return;
+
   let html = "<h3>Player Stats</h3>";
-  html += `<div class="stat-row"><span class="stat-icon">⚡</span><span class="stat-label">Bullet Speed:</span><span class="stat-value">${p.bulletSpeed}</span></div>`;
-  html += `<div class="stat-row"><span class="stat-icon">🔫</span><span class="stat-label">Fire Rate:</span><span class="stat-value">${(
-    1000 / p.fireRate
-  ).toFixed(1)}/s</span></div>`;
+  html += `<div class="stat-row"><span class="stat-icon">⚡</span><span class="stat-label">Bullet Speed:</span><span class="stat-value">Lv ${p.perkLevels.bulletSpeed}</span></div>`;
+  html += `<div class="stat-row"><span class="stat-icon">🔫</span><span class="stat-label">Fire Rate:</span><span class="stat-value">Lv ${p.perkLevels.fireRate}</span></div>`;
   html += `<div class="stat-row"><span class="stat-icon">🐾</span><span class="stat-label">Pets:</span><span class="stat-value">${p.pets.length}</span></div>`;
 
   html += "<h3>Active Perks</h3>";
   const perks = [];
-  if (p.perkSplit) perks.push({ icon: "💥", name: "Split Shot" });
-  if (p.perkHoming) perks.push({ icon: "🎯", name: "Homing" });
-  if (p.perkRicochet) perks.push({ icon: "🔄", name: "Ricochet" });
-  if (p.perkFire) perks.push({ icon: "🔥", name: "Fire" });
-  if (p.perkIce) perks.push({ icon: "❄️", name: "Ice" });
-  if (p.perkLightning) perks.push({ icon: "⚡", name: "Lightning" });
-  if (p.perkPoison) perks.push({ icon: "☠️", name: "Poison" });
+  if (p.perkLevels.bounce > 0)
+    perks.push({
+      icon: "🪃",
+      name: `Bounce Lv${p.perkLevels.bounce}`,
+      level: p.perkLevels.bounce,
+    });
+  if (p.perkLevels.piercing > 0)
+    perks.push({
+      icon: "🎯",
+      name: `Piercing Lv${p.perkLevels.piercing}`,
+      level: p.perkLevels.piercing,
+    });
+  if (p.perkSplit) perks.push({ icon: "�", name: "Split Shot" });
+  if (p.perkHoming) perks.push({ icon: "🧲", name: "Homing" });
+  if (p.perkLevels.fire > 0)
+    perks.push({
+      icon: "🔥",
+      name: `Fire ${p.perkLevels.fire === 1 ? "I" : "II"}`,
+    });
+  if (p.perkLevels.ice > 0)
+    perks.push({
+      icon: "❄️",
+      name: `Ice ${p.perkLevels.ice === 1 ? "I" : "II"}`,
+    });
+  if (p.perkLevels.lightning > 0)
+    perks.push({
+      icon: "⚡",
+      name: `Lightning ${p.perkLevels.lightning === 1 ? "I" : "II"}`,
+    });
+  if (p.perkLevels.poison > 0)
+    perks.push({
+      icon: "☠️",
+      name: `Poison ${p.perkLevels.poison === 1 ? "I" : "II"}`,
+    });
 
   if (perks.length === 0) {
     html += `<div class="stat-row"><span class="stat-label">No perks yet</span></div>`;
