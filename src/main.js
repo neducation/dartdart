@@ -29,6 +29,9 @@ const world = {
   pauseReason: "",
   wave: null,
   spawnWarnings: [], // { x, y, timeLeft }
+  obstacles: [], // { x, y, w, h }
+  levelUpAnimation: 0, // Animation timer for level up
+  waveCompleteAnimation: 0, // Animation timer for wave complete
   // Projectile pool
   _projectilePool: [],
   getProjectile() {
@@ -203,9 +206,141 @@ function setupLeveling() {
     p.xpForNext = Math.floor(p.xpForNext * 1.25);
     world.paused = true;
     world.pauseReason = "levelup";
+    world.levelUpAnimation = 1.0; // Start animation
     if (titleEl) titleEl.textContent = "Level Up! Choose an upgrade";
     chooseUpgrades();
   };
+}
+
+// --- Obstacle generation ---
+function generateObstacles(waveIndex) {
+  world.obstacles = [];
+
+  // Only add obstacles starting from wave 3
+  if (waveIndex < 3) return;
+
+  // Probability increases with waves
+  if (Math.random() > 0.6) return; // 40% chance to have obstacles
+
+  const centerX = world.width / 2;
+  const centerY = world.height / 2;
+  const patterns = ["cross", "corners", "grid", "ring"];
+  const pattern = patterns[Math.floor(Math.random() * patterns.length)];
+
+  const obstacleSize = 60;
+  const gap = 100; // Safe gap for player movement
+
+  switch (pattern) {
+    case "cross":
+      // Symmetrical cross pattern
+      world.obstacles.push(
+        {
+          x: centerX - obstacleSize / 2,
+          y: centerY - gap - obstacleSize,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: centerX - obstacleSize / 2,
+          y: centerY + gap,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: centerX - gap - obstacleSize,
+          y: centerY - obstacleSize / 2,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: centerX + gap,
+          y: centerY - obstacleSize / 2,
+          w: obstacleSize,
+          h: obstacleSize,
+        }
+      );
+      break;
+
+    case "corners":
+      // Symmetrical corner obstacles
+      const cornerPad = 120;
+      world.obstacles.push(
+        { x: cornerPad, y: cornerPad, w: obstacleSize, h: obstacleSize },
+        {
+          x: world.width - cornerPad - obstacleSize,
+          y: cornerPad,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: cornerPad,
+          y: world.height - cornerPad - obstacleSize,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: world.width - cornerPad - obstacleSize,
+          y: world.height - cornerPad - obstacleSize,
+          w: obstacleSize,
+          h: obstacleSize,
+        }
+      );
+      break;
+
+    case "grid":
+      // 2x2 symmetrical grid around center
+      const gridGap = 140;
+      world.obstacles.push(
+        {
+          x: centerX - gridGap,
+          y: centerY - gridGap,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: centerX + gridGap - obstacleSize,
+          y: centerY - gridGap,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: centerX - gridGap,
+          y: centerY + gridGap - obstacleSize,
+          w: obstacleSize,
+          h: obstacleSize,
+        },
+        {
+          x: centerX + gridGap - obstacleSize,
+          y: centerY + gridGap - obstacleSize,
+          w: obstacleSize,
+          h: obstacleSize,
+        }
+      );
+      break;
+
+    case "ring":
+      // Ring of 8 obstacles around center
+      const ringRadius = 180;
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        world.obstacles.push({
+          x: centerX + Math.cos(angle) * ringRadius - obstacleSize / 2,
+          y: centerY + Math.sin(angle) * ringRadius - obstacleSize / 2,
+          w: obstacleSize,
+          h: obstacleSize,
+        });
+      }
+      break;
+  }
+
+  // Failsafe: ensure player starting position is clear
+  const playerStartX = centerX;
+  const playerStartY = centerY;
+  world.obstacles = world.obstacles.filter((obs) => {
+    const dx = Math.abs(obs.x + obs.w / 2 - playerStartX);
+    const dy = Math.abs(obs.y + obs.h / 2 - playerStartY);
+    return dx > 100 || dy > 100; // Keep obstacles at least 100px from center
+  });
 }
 
 // --- Waves ---
@@ -218,7 +353,7 @@ function createWaveManager() {
     enemiesSpawned: 0, // Track how many enemies spawned this wave
     totalEnemies: 0, // Set number of enemies per wave
     spawnCooldown: 0,
-    waveStartDelay: 0, // 2-second delay before spawning
+    waveStartDelay: 0, // 1-second delay before spawning
     waveActive: false, // Whether wave is actively spawning
     startNext() {
       this.index += 1;
@@ -227,14 +362,20 @@ function createWaveManager() {
       this.totalEnemies = 8 + (this.index - 1) * 4; // Fixed count per wave
       this.targetKills = this.totalEnemies;
       this.spawnCooldown = 0;
-      this.waveStartDelay = 2.0; // 2 second delay
+      this.waveStartDelay = 1.0; // 1 second delay
       this.waveActive = false;
+
+      // Generate obstacles for this wave
+      generateObstacles(this.index);
 
       // Clear all projectiles on wave end
       for (const p of world.projectiles) {
         world.releaseProjectile(p);
       }
       world.projectiles = [];
+
+      // Trigger wave complete animation
+      world.waveCompleteAnimation = 1.5;
 
       // Pause for wave upgrade
       world.paused = true;
@@ -396,12 +537,64 @@ function update(dt) {
   }
   world.spawnWarnings = world.spawnWarnings.filter((w) => w.timeLeft > 0);
 
+  // Decay animations
+  if (world.levelUpAnimation > 0) {
+    world.levelUpAnimation = Math.max(0, world.levelUpAnimation - dt * 2);
+  }
+  if (world.waveCompleteAnimation > 0) {
+    world.waveCompleteAnimation = Math.max(0, world.waveCompleteAnimation - dt);
+  }
+
   // Decay screen shake
   world.screenShake = Math.max(0, world.screenShake - dt * 15);
 }
 
 function render() {
   ctx.clearRect(0, 0, world.width, world.height);
+
+  // Draw fancy backdrop with gradient and border
+  ctx.save();
+
+  // Radial gradient background
+  const gradient = ctx.createRadialGradient(
+    world.width / 2,
+    world.height / 2,
+    0,
+    world.width / 2,
+    world.height / 2,
+    Math.max(world.width, world.height) / 2
+  );
+  gradient.addColorStop(0, "#1a1a2e");
+  gradient.addColorStop(0.5, "#16213e");
+  gradient.addColorStop(1, "#0f0f1e");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, world.width, world.height);
+
+  // Decorative border with glow
+  const borderWidth = 8;
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = "#3b82f6";
+  ctx.strokeStyle = "#3b82f6";
+  ctx.lineWidth = borderWidth;
+  ctx.strokeRect(
+    borderWidth / 2,
+    borderWidth / 2,
+    world.width - borderWidth,
+    world.height - borderWidth
+  );
+
+  // Inner border accent
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "#60a5fa";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(
+    borderWidth + 4,
+    borderWidth + 4,
+    world.width - borderWidth * 2 - 8,
+    world.height - borderWidth * 2 - 8
+  );
+
+  ctx.restore();
 
   // Apply screen shake
   ctx.save();
@@ -411,9 +604,9 @@ function render() {
     ctx.translate(shakeX, shakeY);
   }
 
-  // background grid
-  ctx.globalAlpha = 0.15;
-  ctx.strokeStyle = "#1f2937";
+  // Background grid (dimmer now)
+  ctx.globalAlpha = 0.08;
+  ctx.strokeStyle = "#4b5563";
   for (let x = 0; x < world.width; x += 32) {
     ctx.beginPath();
     ctx.moveTo(x + 0.5, 0);
@@ -427,6 +620,45 @@ function render() {
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+
+  // Draw obstacles
+  for (const obs of world.obstacles) {
+    ctx.save();
+
+    // Obstacle shadow
+    ctx.fillStyle = "#000000";
+    ctx.globalAlpha = 0.3;
+    ctx.fillRect(obs.x + 4, obs.y + 4, obs.w, obs.h);
+
+    // Main obstacle with gradient
+    ctx.globalAlpha = 1;
+    const obsGradient = ctx.createLinearGradient(
+      obs.x,
+      obs.y,
+      obs.x,
+      obs.y + obs.h
+    );
+    obsGradient.addColorStop(0, "#475569");
+    obsGradient.addColorStop(1, "#334155");
+    ctx.fillStyle = obsGradient;
+    ctx.fillRect(obs.x, obs.y, obs.w, obs.h);
+
+    // Obstacle border
+    ctx.strokeStyle = "#64748b";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(obs.x, obs.y, obs.w, obs.h);
+
+    // Highlight edge
+    ctx.strokeStyle = "#94a3b8";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(obs.x, obs.y);
+    ctx.lineTo(obs.x + obs.w, obs.y);
+    ctx.lineTo(obs.x + obs.w, obs.y + 5);
+    ctx.stroke();
+
+    ctx.restore();
+  }
 
   world.player.draw(ctx, world.sprites);
   for (const e of world.enemies) e.draw(ctx, world.sprites);
@@ -464,6 +696,70 @@ function render() {
     ctx.save();
     ctx.globalAlpha = alpha;
     world.sprites.draw(ctx, "muzzle", fx.x, fx.y, 20);
+    ctx.restore();
+  }
+
+  // Level up animation overlay
+  if (world.levelUpAnimation > 0) {
+    const alpha = world.levelUpAnimation;
+    const scale = 1 + (1 - alpha) * 0.3;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.3;
+    ctx.fillStyle = "#fbbf24";
+    ctx.fillRect(0, 0, world.width, world.height);
+
+    // Radial burst effect
+    ctx.globalAlpha = alpha * 0.5;
+    const burstGradient = ctx.createRadialGradient(
+      world.width / 2,
+      world.height / 2,
+      0,
+      world.width / 2,
+      world.height / 2,
+      300 * scale
+    );
+    burstGradient.addColorStop(0, "#fbbf24");
+    burstGradient.addColorStop(1, "transparent");
+    ctx.fillStyle = burstGradient;
+    ctx.fillRect(0, 0, world.width, world.height);
+    ctx.restore();
+  }
+
+  // Wave complete animation overlay
+  if (world.waveCompleteAnimation > 0) {
+    const alpha = Math.min(1, world.waveCompleteAnimation);
+    const progress = 1 - world.waveCompleteAnimation / 1.5;
+    ctx.save();
+
+    // Sweeping gradient effect
+    const sweepGradient = ctx.createLinearGradient(
+      0,
+      0,
+      world.width,
+      world.height
+    );
+    sweepGradient.addColorStop(Math.max(0, progress - 0.3), "transparent");
+    sweepGradient.addColorStop(progress, "#3b82f6");
+    sweepGradient.addColorStop(Math.min(1, progress + 0.3), "transparent");
+    ctx.globalAlpha = alpha * 0.4;
+    ctx.fillStyle = sweepGradient;
+    ctx.fillRect(0, 0, world.width, world.height);
+
+    // Particle burst from center
+    if (alpha > 0.7) {
+      ctx.globalAlpha = alpha;
+      for (let i = 0; i < 12; i++) {
+        const angle = (i / 12) * Math.PI * 2 + progress * Math.PI;
+        const dist = 100 + progress * 200;
+        const x = world.width / 2 + Math.cos(angle) * dist;
+        const y = world.height / 2 + Math.sin(angle) * dist;
+        ctx.fillStyle = "#60a5fa";
+        ctx.beginPath();
+        ctx.arc(x, y, 6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
     ctx.restore();
   }
 

@@ -1,5 +1,22 @@
 import { angleTo, normalize, pickNearest } from "./utils.js";
 
+// Helper function to check collision with obstacles
+function checkObstacleCollision(x, y, radius, world) {
+  for (const obs of world.obstacles) {
+    // Check if circle (entity) intersects with rectangle (obstacle)
+    const closestX = Math.max(obs.x, Math.min(x, obs.x + obs.w));
+    const closestY = Math.max(obs.y, Math.min(y, obs.y + obs.h));
+    const distX = x - closestX;
+    const distY = y - closestY;
+    const distSq = distX * distX + distY * distY;
+
+    if (distSq < radius * radius) {
+      return { collided: true, obs, closestX, closestY };
+    }
+  }
+  return { collided: false };
+}
+
 export class Entity {
   constructor(x, y) {
     this.x = x;
@@ -79,6 +96,14 @@ export class Projectile extends Entity {
     this.x += this.vx * dt;
     this.y += this.vy * dt;
     this.life -= dt;
+
+    // Check obstacle collision
+    const obstacleHit = checkObstacleCollision(this.x, this.y, 6, world);
+    if (obstacleHit.collided) {
+      this.dead = true;
+      return;
+    }
+
     // Ricochet: bounce off walls
     if (this.ricochet && this.owner === "player" && this.bounces < 2) {
       let bounced = false;
@@ -239,8 +264,20 @@ export class Player extends Entity {
     const v = world.input.getVector();
     this.vx = v.x * this.speed;
     this.vy = v.y * this.speed;
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
+
+    // Try X movement
+    const newX = this.x + this.vx * dt;
+    const collisionX = checkObstacleCollision(newX, this.y, this.radius, world);
+    if (!collisionX.collided) {
+      this.x = newX;
+    }
+
+    // Try Y movement
+    const newY = this.y + this.vy * dt;
+    const collisionY = checkObstacleCollision(this.x, newY, this.radius, world);
+    if (!collisionY.collided) {
+      this.y = newY;
+    }
 
     // clamp to world bounds
     this.x = Math.max(this.radius, Math.min(world.width - this.radius, this.x));
@@ -396,8 +433,31 @@ export class Enemy extends Entity {
         const n = normalize(p.x - this.x, p.y - this.y);
         this.vx = n.x * this.speed * 0.8 * speedMod;
         this.vy = n.y * this.speed * 0.8 * speedMod;
-        this.x += this.vx * dt;
-        this.y += this.vy * dt;
+
+        // Try X movement with obstacle check
+        const newX = this.x + this.vx * dt;
+        const collisionX = checkObstacleCollision(
+          newX,
+          this.y,
+          this.radius,
+          world
+        );
+        if (!collisionX.collided) {
+          this.x = newX;
+        }
+
+        // Try Y movement with obstacle check
+        const newY = this.y + this.vy * dt;
+        const collisionY = checkObstacleCollision(
+          this.x,
+          newY,
+          this.radius,
+          world
+        );
+        if (!collisionY.collided) {
+          this.y = newY;
+        }
+
         this.timer -= dt;
         if (this.timer <= 0) {
           this.state = "cooldown";
