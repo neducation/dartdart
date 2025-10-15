@@ -113,7 +113,7 @@ export class Projectile extends Entity {
           if (this.ice) e.applyStatus("slow", 2.5, 0.5); // 2.5s, 50% speed
           if (this.poison) e.applyStatus("poison", 4, 2); // 4s, 2dps
           if (this.lightning) {
-            // Chain to another enemy
+            // Chain to another enemy (chain projectile does NOT chain again)
             const others = world.enemies.filter((en) => !en.dead && en !== e);
             const chain = pickNearest(e, others);
             if (chain) {
@@ -128,7 +128,7 @@ export class Projectile extends Entity {
                 this.damage * 0.7,
                 this.owner,
                 {
-                  lightning: true,
+                  lightning: false, // Prevent infinite chaining!
                 }
               );
               world.spawnProjectile(p);
