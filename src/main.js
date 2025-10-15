@@ -6,6 +6,32 @@ import { Player, Enemy, Pet } from "./entities.js";
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
+// Global world state used by entities
+const world = {
+  width: 0,
+  height: 0,
+  input: null,
+  sprites: null,
+  player: null,
+  enemies: [],
+  projectiles: [],
+  effects: [],
+  paused: false,
+  pauseReason: "",
+  wave: null,
+  // Projectile pool
+  _projectilePool: [],
+  getProjectile() {
+    return this._projectilePool.length ? this._projectilePool.pop() : null;
+  },
+  spawnProjectile(p) {
+    this.projectiles.push(p);
+  },
+  releaseProjectile(p) {
+    this._projectilePool.push(p);
+  },
+};
+
 // Handle DPR and resize
 function resize() {
   const dpr = Math.max(1, window.devicePixelRatio || 1);
@@ -18,13 +44,11 @@ function resize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
   world.width = w;
   world.height = h;
-window.addEventListener("resize", resize);
-
-// --- Projectile Pool ---
-const projectilePool = [];
-function getProjectile() {
-  return projectilePool.length > 0 ? projectilePool.pop() : null;
 }
+window.addEventListener("resize", resize);
+resize();
+
+// --- Upgrades ---
 function generateUpgrades() {
   const p = world.player;
   const choices = [];
@@ -46,37 +70,37 @@ function generateUpgrades() {
       p.pets.push(new Pet(Math.random() * Math.PI * 2));
     },
   });
-  // --- New Perks ---
+  // New bullet perks
   choices.push({
     title: `Bullets Split on Impact`,
-    apply: () => { p.perkSplit = true; },
+    apply: () => (p.perkSplit = true),
   });
   choices.push({
     title: `Bullets Track Enemies`,
-    apply: () => { p.perkHoming = true; },
+    apply: () => (p.perkHoming = true),
   });
   choices.push({
     title: `Bullets Ricochet`,
-    apply: () => { p.perkRicochet = true; },
+    apply: () => (p.perkRicochet = true),
   });
-  // --- Elemental Perks ---
+  // Elemental perks
   choices.push({
-    title: `Bullets inflict FIRE (burns enemies)`,
-    apply: () => { p.perkFire = true; },
-  });
-  choices.push({
-    title: `Bullets inflict ICE (slow enemies)`,
-    apply: () => { p.perkIce = true; },
+    title: `Bullets inflict FIRE (burn)`,
+    apply: () => (p.perkFire = true),
   });
   choices.push({
-    title: `Bullets inflict LIGHTNING (chain hit)`,
-    apply: () => { p.perkLightning = true; },
+    title: `Bullets inflict ICE (slow)`,
+    apply: () => (p.perkIce = true),
   });
   choices.push({
-    title: `Bullets inflict POISON (damage over time)`,
-    apply: () => { p.perkPoison = true; },
+    title: `Bullets inflict LIGHTNING (chain)`,
+    apply: () => (p.perkLightning = true),
   });
-  // For debugging: let player pick all perks at once
+  choices.push({
+    title: `Bullets inflict POISON (DoT)`,
+    apply: () => (p.perkPoison = true),
+  });
+  // Debug: grant all
   choices.push({
     title: `DEBUG: Grant ALL Perks`,
     apply: () => {
@@ -90,24 +114,140 @@ function generateUpgrades() {
     },
   });
   return choices;
-// ...existing code...
+}
 
+// --- Leveling overlay ---
+function setupLeveling() {
+  const p = world.player;
+  const overlay = document.getElementById("upgrade");
+  const optsEl = document.getElementById("upgrade-opts");
+  const titleEl = document.getElementById("upgrade-title");
+
+  function showOverlay(choices) {
+    if (!overlay || !optsEl) return;
+    optsEl.innerHTML = "";
+    for (const c of choices) {
+      const btn = document.createElement("button");
+      btn.textContent = c.title;
+      btn.addEventListener(
+        "click",
+        () => {
+          c.apply();
+          overlay.style.display = "none";
+          if (world.pauseReason === "levelup" || world.pauseReason === "wave") {
+            world.paused = false;
+            world.pauseReason = "";
+            const pauseBtn = document.getElementById("pause-btn");
+            if (pauseBtn) pauseBtn.textContent = "Pause";
+          }
+        },
+        { once: true }
+      );
+      optsEl.appendChild(btn);
+    }
+    overlay.style.display = "flex";
+  }
+
+  function chooseUpgrades() {
+    const choices = generateUpgrades();
+    showOverlay(choices);
+  }
+
+  p.onLevelUp = () => {
+    p.xpForNext = Math.floor(p.xpForNext * 1.25);
+    world.paused = true;
+    world.pauseReason = "levelup";
+    if (titleEl) titleEl.textContent = "Level Up! Choose an upgrade";
+    chooseUpgrades();
+  };
+}
+
+// --- Waves ---
+function createWaveManager() {
+  const m = {
+    index: 0,
+    time: 0,
+    targetKills: 0,
+    killsThisWave: 0,
+    aliveCap: 0,
+    spawnCooldown: 0,
+    startNext() {
+      this.index += 1;
+      this.killsThisWave = 0;
+      this.targetKills = 6 + (this.index - 1) * 3;
+      this.aliveCap = Math.min(10, 3 + Math.floor(this.index / 2));
+      this.spawnCooldown = 0;
+      // Pause for wave upgrade
+      world.paused = true;
+      world.pauseReason = "wave";
+      const overlay = document.getElementById("upgrade");
+      const titleEl = document.getElementById("upgrade-title");
+      if (titleEl)
+        titleEl.textContent = `Wave ${this.index} Reached! Pick a bonus`;
+      const choices = generateUpgrades();
+      const optsEl = document.getElementById("upgrade-opts");
+      if (!overlay || !optsEl) return;
+      optsEl.innerHTML = "";
+      for (const c of choices) {
+        const btn = document.createElement("button");
+        btn.textContent = c.title;
+        btn.addEventListener(
+          "click",
+          () => {
+            c.apply();
+            overlay.style.display = "none";
+            if (world.pauseReason === "wave") {
+              world.paused = false;
+              world.pauseReason = "";
+              const pauseBtn = document.getElementById("pause-btn");
+              if (pauseBtn) pauseBtn.textContent = "Pause";
+            }
+          },
+          { once: true }
+        );
+        optsEl.appendChild(btn);
+      }
+      overlay.style.display = "flex";
+    },
+    onEnemyKilled() {
+      this.killsThisWave += 1;
+      if (this.killsThisWave >= this.targetKills) {
+        this.startNext();
+      }
+    },
+    update(dt) {
+      this.time += dt;
+      // keep spawning until alive reaches cap
+      this.spawnCooldown -= dt;
+      const alive = world.enemies.length;
+      if (alive < this.aliveCap && this.spawnCooldown <= 0) {
+        const toSpawn = Math.min(
+          this.aliveCap - alive,
+          1 + Math.floor(Math.random() * 2)
+        );
+        for (let i = 0; i < toSpawn; i++) {
+          const [x, y] = randomEdgeSpawn();
+          world.enemies.push(new Enemy(x, y));
+        }
+        this.spawnCooldown = Math.max(0.5, 1.6 - this.index * 0.08);
+      }
+    },
+  };
+  return m;
+}
+
+// --- Update & Render ---
 function update(dt) {
-  if (world.paused) return; // global pause
-  // update player
+  if (world.paused) return;
+
   world.player.update(dt, world);
 
-  // update enemies
   for (const e of world.enemies) e.update(dt, world);
-  // prune dead (wave manager can re-spawn as needed)
   world.enemies = world.enemies.filter((e) => !e.dead);
 
-  // update wave spawner
   if (world.wave) world.wave.update(dt);
 
-  // projectiles
   for (const p of world.projectiles) p.update(dt, world);
-  // Remove dead projectiles and pool them
   world.projectiles = world.projectiles.filter((p) => {
     if (p.dead) {
       world.releaseProjectile(p);
@@ -116,7 +256,6 @@ function update(dt) {
     return true;
   });
 
-  // effects
   for (const fx of world.effects) fx.t -= dt;
   world.effects = world.effects.filter((fx) => fx.t > 0);
 }
@@ -142,12 +281,10 @@ function render() {
   }
   ctx.restore();
 
-  // draw entities
   world.player.draw(ctx, world.sprites);
   for (const e of world.enemies) e.draw(ctx, world.sprites);
   for (const p of world.projectiles) p.draw(ctx, world.sprites);
 
-  // muzzle flashes
   for (const fx of world.effects) {
     const alpha = Math.max(0, Math.min(1, fx.t / 0.08));
     ctx.save();
@@ -156,10 +293,8 @@ function render() {
     ctx.restore();
   }
 
-  // joystick
   world.input.draw(ctx);
 
-  // HUD: display Level/XP/Wave
   const hud = document.getElementById("hud");
   if (hud) {
     const p = world.player;
@@ -184,139 +319,31 @@ function randomEdgeSpawn() {
   }
 }
 
-boot();
+// --- Boot ---
+async function boot() {
+  world.input = new VirtualJoystick(canvas);
+  world.sprites = await loadSpriteSheet("./assets/sprites.svg");
+  world.player = new Player(
+    Math.floor(world.width / 2),
+    Math.floor(world.height / 2)
+  );
 
-// --- Upgrades & Leveling ---
-function setupLeveling() {
-  const p = world.player;
-  const overlay = document.getElementById("upgrade");
-  const optsEl = document.getElementById("upgrade-opts");
-  const titleEl = document.getElementById("upgrade-title");
-  const showOverlay = (choices) => {
-    // clear
-    optsEl.innerHTML = "";
-    for (const c of choices) {
-      const btn = document.createElement("button");
-      btn.textContent = c.title;
-      btn.addEventListener(
-        "click",
-        () => {
-          c.apply();
-          overlay.style.display = "none";
-          // resume if paused for overlay
-          if (world.pauseReason === "levelup" || world.pauseReason === "wave") {
-            world.paused = false;
-            world.pauseReason = "";
-            const pauseBtn = document.getElementById("pause-btn");
-            if (pauseBtn) pauseBtn.textContent = "Pause";
-          }
-        },
-        { once: true }
-      );
-      optsEl.appendChild(btn);
-    }
-    overlay.style.display = "flex";
-  };
+  setupLeveling();
+  world.wave = createWaveManager();
+  world.wave.startNext();
 
-  const chooseUpgrades = () => {
-    const choices = generateUpgrades();
-    showOverlay(choices);
-  };
+  // Pause button if present
+  const pauseBtn = document.getElementById("pause-btn");
+  if (pauseBtn) {
+    pauseBtn.addEventListener("click", () => {
+      world.paused = !world.paused;
+      world.pauseReason = world.paused ? "manual" : "";
+      pauseBtn.textContent = world.paused ? "Resume" : "Pause";
+    });
+  }
 
-
-  p.onLevelUp = () => {
-    // increase requirement progressively (linear for now)
-    p.xpForNext = Math.floor(p.xpForNext * 1.25);
-    // pause and show overlay
-    world.paused = true;
-    world.pauseReason = "levelup";
-    if (titleEl) titleEl.textContent = "Level Up! Choose an upgrade";
-    chooseUpgrades();
-  };
+  const engine = new Engine(update, render);
+  engine.start();
 }
 
-
-// --- Waves ---
-function createWaveManager() {
-  const m = {
-    index: 0,
-    time: 0,
-    targetKills: 0,
-    killsThisWave: 0,
-    aliveCap: 0,
-    spawnCooldown: 0,
-    startNext() {
-      this.index += 1;
-      this.killsThisWave = 0;
-      // Basic scaling: more kills and slightly higher cap each wave
-      this.targetKills = 6 + (this.index - 1) * 3;
-      this.aliveCap = Math.min(10, 3 + Math.floor(this.index / 2));
-      this.spawnCooldown = 0;
-      // On every wave start, pause and grant a random upgrade automatically
-      world.paused = true;
-      world.pauseReason = "wave";
-      const overlay = document.getElementById("upgrade");
-      const titleEl = document.getElementById("upgrade-title");
-      if (titleEl)
-        titleEl.textContent = `Wave ${this.index} Reached! Pick a bonus`;
-      const choices = generateUpgrades();
-      // Show overlay with random 3 (already 3); user must pick to resume
-      const optsEl = document.getElementById("upgrade-opts");
-      if (optsEl) optsEl.innerHTML = "";
-      // reuse setup in setupLeveling
-      const buttons = choices.map((c) => c);
-      const show = () => {
-        const overlayEl = document.getElementById("upgrade");
-        const opts = document.getElementById("upgrade-opts");
-        if (!overlayEl || !opts) return;
-        opts.innerHTML = "";
-        for (const c of buttons) {
-          const btn = document.createElement("button");
-          btn.textContent = c.title;
-          btn.addEventListener(
-            "click",
-            () => {
-              c.apply();
-              overlayEl.style.display = "none";
-              if (world.pauseReason === "wave") {
-                world.paused = false;
-                world.pauseReason = "";
-                const pauseBtn = document.getElementById("pause-btn");
-                if (pauseBtn) pauseBtn.textContent = "Pause";
-              }
-            },
-            { once: true }
-          );
-          opts.appendChild(btn);
-        }
-        overlayEl.style.display = "flex";
-      };
-      show();
-    },
-    onEnemyKilled() {
-      this.killsThisWave += 1;
-      if (this.killsThisWave >= this.targetKills) {
-        this.startNext();
-      }
-    },
-    update(dt) {
-      this.time += dt;
-      // keep spawning until alive reaches cap
-      this.spawnCooldown -= dt;
-      const alive = world.enemies.length;
-      if (alive < this.aliveCap && this.spawnCooldown <= 0) {
-        // spawn burst of 1-2 enemies
-        const toSpawn = Math.min(
-          this.aliveCap - alive,
-          1 + Math.floor(Math.random() * 2)
-        );
-        for (let i = 0; i < toSpawn; i++) {
-          const [x, y] = randomEdgeSpawn();
-          world.enemies.push(new Enemy(x, y));
-        }
-        // spawn delay shrinks slightly with wave index
-        this.spawnCooldown = Math.max(0.5, 1.6 - this.index * 0.08);
-      }
-    },
-  };
-  return m;
+boot();
