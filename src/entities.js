@@ -190,6 +190,31 @@ export class Projectile extends Entity {
   }
   draw(ctx, sprites) {
     const rot = Math.atan2(this.vy, this.vx);
+
+    // Draw elemental glow effect
+    if (this.fire || this.ice || this.lightning || this.poison) {
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.shadowBlur = 12;
+      if (this.fire) {
+        ctx.shadowColor = "#ff6b35";
+        ctx.fillStyle = "#ff6b35";
+      } else if (this.ice) {
+        ctx.shadowColor = "#4dd0e1";
+        ctx.fillStyle = "#4dd0e1";
+      } else if (this.lightning) {
+        ctx.shadowColor = "#ffd700";
+        ctx.fillStyle = "#ffd700";
+      } else if (this.poison) {
+        ctx.shadowColor = "#9ccc65";
+        ctx.fillStyle = "#9ccc65";
+      }
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
     sprites.draw(ctx, "dart", this.x, this.y, 24, rot);
   }
 }

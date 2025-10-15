@@ -62,55 +62,90 @@ function generateUpgrades() {
   const p = world.player;
   const choices = [];
   choices.push({
+    icon: "⚡",
     title: `Bullet Speed +20% (now ${Math.round(p.projectileSpeed * 1.2)})`,
     apply: () => {
       p.projectileSpeed = Math.round(p.projectileSpeed * 1.2);
+      updateStatsPanel();
     },
   });
   choices.push({
+    icon: "🔫",
     title: `Fire Rate +15% (faster)`,
     apply: () => {
       p.fireRate = Math.max(0.2, +(p.fireRate * 0.85).toFixed(2));
+      updateStatsPanel();
     },
   });
   choices.push({
+    icon: "🐾",
     title: `+1 Pet Companion`,
     apply: () => {
       p.pets.push(new Pet(Math.random() * Math.PI * 2));
+      updateStatsPanel();
     },
   });
   // New bullet perks
   choices.push({
+    icon: "💥",
     title: `Bullets Split on Impact`,
-    apply: () => (p.perkSplit = true),
+    apply: () => {
+      p.perkSplit = true;
+      updateStatsPanel();
+    },
   });
   choices.push({
+    icon: "🎯",
     title: `Bullets Track Enemies`,
-    apply: () => (p.perkHoming = true),
+    apply: () => {
+      p.perkHoming = true;
+      updateStatsPanel();
+    },
   });
   choices.push({
+    icon: "🔄",
     title: `Bullets Ricochet`,
-    apply: () => (p.perkRicochet = true),
+    apply: () => {
+      p.perkRicochet = true;
+      updateStatsPanel();
+    },
   });
   // Elemental perks
   choices.push({
+    icon: "🔥",
     title: `Bullets inflict FIRE (burn)`,
-    apply: () => (p.perkFire = true),
+    apply: () => {
+      p.perkFire = true;
+      updateStatsPanel();
+    },
   });
   choices.push({
+    icon: "❄️",
     title: `Bullets inflict ICE (slow)`,
-    apply: () => (p.perkIce = true),
+    apply: () => {
+      p.perkIce = true;
+      updateStatsPanel();
+    },
   });
   choices.push({
+    icon: "⚡",
     title: `Bullets inflict LIGHTNING (chain)`,
-    apply: () => (p.perkLightning = true),
+    apply: () => {
+      p.perkLightning = true;
+      updateStatsPanel();
+    },
   });
   choices.push({
+    icon: "☠️",
     title: `Bullets inflict POISON (DoT)`,
-    apply: () => (p.perkPoison = true),
+    apply: () => {
+      p.perkPoison = true;
+      updateStatsPanel();
+    },
   });
   // Debug: grant all
   choices.push({
+    icon: "🎁",
     title: `DEBUG: Grant ALL Perks`,
     apply: () => {
       p.perkSplit = true;
@@ -120,6 +155,7 @@ function generateUpgrades() {
       p.perkIce = true;
       p.perkLightning = true;
       p.perkPoison = true;
+      updateStatsPanel();
     },
   });
   return choices;
@@ -137,7 +173,7 @@ function setupLeveling() {
     optsEl.innerHTML = "";
     for (const c of choices) {
       const btn = document.createElement("button");
-      btn.textContent = c.title;
+      btn.innerHTML = `<span class="upgrade-icon">${c.icon}</span><span>${c.title}</span>`;
       btn.addEventListener(
         "click",
         () => {
@@ -199,7 +235,7 @@ function createWaveManager() {
       optsEl.innerHTML = "";
       for (const c of choices) {
         const btn = document.createElement("button");
-        btn.textContent = c.title;
+        btn.innerHTML = `<span class="upgrade-icon">${c.icon}</span><span>${c.title}</span>`;
         btn.addEventListener(
           "click",
           () => {
@@ -412,6 +448,42 @@ function randomEdgeSpawn() {
   }
 }
 
+// --- Stats Panel ---
+function updateStatsPanel() {
+  const statsContent = document.getElementById("stats-content");
+  if (!statsContent) return;
+
+  const p = world.player;
+  if (!p) return;
+
+  let html = "<h3>Player Stats</h3>";
+  html += `<div class="stat-row"><span class="stat-icon">⚡</span><span class="stat-label">Bullet Speed:</span><span class="stat-value">${p.bulletSpeed}</span></div>`;
+  html += `<div class="stat-row"><span class="stat-icon">🔫</span><span class="stat-label">Fire Rate:</span><span class="stat-value">${(
+    1000 / p.fireRate
+  ).toFixed(1)}/s</span></div>`;
+  html += `<div class="stat-row"><span class="stat-icon">🐾</span><span class="stat-label">Pets:</span><span class="stat-value">${p.pets.length}</span></div>`;
+
+  html += "<h3>Active Perks</h3>";
+  const perks = [];
+  if (p.perkSplit) perks.push({ icon: "💥", name: "Split Shot" });
+  if (p.perkHoming) perks.push({ icon: "🎯", name: "Homing" });
+  if (p.perkRicochet) perks.push({ icon: "🔄", name: "Ricochet" });
+  if (p.perkFire) perks.push({ icon: "🔥", name: "Fire" });
+  if (p.perkIce) perks.push({ icon: "❄️", name: "Ice" });
+  if (p.perkLightning) perks.push({ icon: "⚡", name: "Lightning" });
+  if (p.perkPoison) perks.push({ icon: "☠️", name: "Poison" });
+
+  if (perks.length === 0) {
+    html += `<div class="stat-row"><span class="stat-label">No perks yet</span></div>`;
+  } else {
+    for (const perk of perks) {
+      html += `<div class="stat-row"><span class="stat-icon">${perk.icon}</span><span class="stat-label">${perk.name}</span></div>`;
+    }
+  }
+
+  statsContent.innerHTML = html;
+}
+
 // --- Boot ---
 async function boot() {
   world.input = new VirtualJoystick(canvas);
@@ -425,13 +497,22 @@ async function boot() {
   world.wave = createWaveManager();
   world.wave.startNext();
 
-  // Pause button if present
+  // Pause button and stats panel
   const pauseBtn = document.getElementById("pause-btn");
+  const statsPanel = document.getElementById("stats-panel");
   if (pauseBtn) {
     pauseBtn.addEventListener("click", () => {
       world.paused = !world.paused;
       world.pauseReason = world.paused ? "manual" : "";
       pauseBtn.textContent = world.paused ? "Resume" : "Pause";
+
+      // Show/hide stats panel
+      if (statsPanel) {
+        statsPanel.style.display = world.paused ? "flex" : "none";
+        if (world.paused) {
+          updateStatsPanel();
+        }
+      }
     });
   }
 
