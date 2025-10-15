@@ -227,45 +227,51 @@ export class Projectile extends Entity {
             }
           }
           if (this.lightning) {
-            // Instant lightning strike to nearest enemies within radius
+            // Instant lightning chain between enemies within radius
             const level = p.perkLevels?.lightning || 1;
             const radius = level === 1 ? 200 : 350; // Lightning I: 200px, Lightning II: 350px
-            const maxTargets = 3; // Always 3 targets max
+            const maxTargets = 4; // Chain through up to 4 enemies (including first)
             const baseDamage = level === 1 ? 0.5 : 0.7; // Lightning I: 50%, Lightning II: 70%
 
-            // Find all enemies within radius
+            // Find all enemies within radius from the initial hit
             const inRadius = world.enemies.filter((en) => {
               if (en.dead || en === e) return false;
               const dist = Math.hypot(en.x - e.x, en.y - e.y);
               return dist <= radius;
             });
 
-            // Sort by distance and take closest 3
+            // Sort by distance and take closest enemies
             inRadius.sort((a, b) => {
               const distA = Math.hypot(a.x - e.x, a.y - e.y);
               const distB = Math.hypot(b.x - e.x, b.y - e.y);
               return distA - distB;
             });
 
-            const targets = inRadius.slice(0, maxTargets);
+            const targets = [e, ...inRadius.slice(0, maxTargets - 1)];
 
-            // Create jagged lightning strike for each target
-            for (const target of targets) {
+            // Create lightning chain connecting all targets
+            const color = level === 1 ? "#ffd700" : "#00ffff"; // Yellow for I, Cyan for II
+            for (let i = 0; i < targets.length - 1; i++) {
+              const fromEnemy = targets[i];
+              const toEnemy = targets[i + 1];
+
               const points = generateLightningPath(
-                e.x,
-                e.y,
-                target.x,
-                target.y
+                fromEnemy.x,
+                fromEnemy.y,
+                toEnemy.x,
+                toEnemy.y
               );
-              const color = level === 1 ? "#ffd700" : "#00ffff"; // Yellow for I, Cyan for II
+
               world.lightningStrikes.push({
                 points,
                 timer: 0.15, // 150ms visible
                 color,
               });
 
-              // Apply damage
-              target.hit(this.damage * baseDamage);
+              // Apply damage to all chained enemies (except the first one that gets hit by projectile)
+              if (i > 0) {
+                toEnemy.hit(this.damage * baseDamage);
+              }
             }
 
             // Screen shake for lightning

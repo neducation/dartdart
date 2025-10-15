@@ -33,6 +33,8 @@ const world = {
   levelUpAnimation: 0, // Animation timer for level up
   waveCompleteAnimation: 0, // Animation timer for wave complete
   lightningStrikes: [], // { points: [{x, y}], timer, color }
+  redrawsThisWave: 0, // Track redraws used this wave
+  maxRedraws: 1, // Max redraws per wave
   // Projectile pool
   _projectilePool: [],
   getProjectile() {
@@ -63,7 +65,7 @@ window.addEventListener("resize", resize);
 resize();
 
 // --- Upgrades ---
-function generateUpgrades() {
+function generateUpgrades(showAll = false) {
   const p = world.player;
   const choices = [];
 
@@ -245,7 +247,7 @@ function generateUpgrades() {
     choices.push({
       icon: "⚡",
       title: `Lightning I`,
-      description: "Instant strikes to 3 enemies (200px, 50% damage)",
+      description: "Chain lightning between 4 enemies (200px, 50% damage)",
       apply: () => {
         p.perkLightning = true;
         p.perkLevels.lightning = 1;
@@ -256,7 +258,7 @@ function generateUpgrades() {
     choices.push({
       icon: "⚡",
       title: `Lightning II`,
-      description: "Larger radius (350px, 70% damage, cyan bolts)",
+      description: "Larger chain radius (350px, 70% damage, cyan bolts)",
       apply: () => {
         p.perkLevels.lightning = 2;
         updateStatsPanel();
@@ -288,7 +290,10 @@ function generateUpgrades() {
     });
   }
 
-  // Shuffle and return 3 random choices
+  // Return all choices for debug, or shuffle and return 3 random choices
+  if (showAll) {
+    return choices;
+  }
   const shuffled = choices.sort(() => Math.random() - 0.5);
   return shuffled.slice(0, 3);
 }
@@ -299,6 +304,15 @@ function setupLeveling() {
   const overlay = document.getElementById("upgrade");
   const optsEl = document.getElementById("upgrade-opts");
   const titleEl = document.getElementById("upgrade-title");
+  const redrawBtn = document.getElementById("redraw-btn");
+  const debugBtn = document.getElementById("debug-all-btn");
+
+  function updateRedrawButton() {
+    if (!redrawBtn) return;
+    const remaining = world.maxRedraws - world.redrawsThisWave;
+    redrawBtn.textContent = `🔄 Redraw (${remaining} left)`;
+    redrawBtn.disabled = remaining <= 0;
+  }
 
   function showOverlay(choices) {
     if (!overlay || !optsEl) return;
@@ -323,11 +337,29 @@ function setupLeveling() {
       optsEl.appendChild(btn);
     }
     overlay.style.display = "flex";
+    updateRedrawButton();
   }
 
-  function chooseUpgrades() {
-    const choices = generateUpgrades();
+  function chooseUpgrades(showAll = false) {
+    const choices = generateUpgrades(showAll);
     showOverlay(choices);
+  }
+
+  // Redraw button handler
+  if (redrawBtn) {
+    redrawBtn.addEventListener("click", () => {
+      if (world.redrawsThisWave < world.maxRedraws) {
+        world.redrawsThisWave++;
+        chooseUpgrades(false);
+      }
+    });
+  }
+
+  // Debug show all button handler
+  if (debugBtn) {
+    debugBtn.addEventListener("click", () => {
+      chooseUpgrades(true);
+    });
   }
 
   p.onLevelUp = () => {
@@ -336,6 +368,10 @@ function setupLeveling() {
     world.pauseReason = "levelup";
     world.levelUpAnimation = 1.0; // Start animation
     if (titleEl) titleEl.textContent = "Level Up! Choose an upgrade";
+    chooseUpgrades();
+  };
+
+  world.onWaveComplete = () => {
     chooseUpgrades();
   };
 }
@@ -493,6 +529,9 @@ function createWaveManager() {
       this.waveStartDelay = 1.0; // 1 second delay
       this.waveActive = false;
 
+      // Reset redraw counter for new wave
+      world.redrawsThisWave = 0;
+
       // Generate obstacles for this wave
       generateObstacles(this.index);
 
@@ -508,34 +547,14 @@ function createWaveManager() {
       // Pause for wave upgrade
       world.paused = true;
       world.pauseReason = "wave";
-      const overlay = document.getElementById("upgrade");
       const titleEl = document.getElementById("upgrade-title");
       if (titleEl)
         titleEl.textContent = `Wave ${this.index} Reached! Pick a bonus`;
-      const choices = generateUpgrades();
-      const optsEl = document.getElementById("upgrade-opts");
-      if (!overlay || !optsEl) return;
-      optsEl.innerHTML = "";
-      for (const c of choices) {
-        const btn = document.createElement("button");
-        btn.innerHTML = `<span class="upgrade-icon">${c.icon}</span><span>${c.title}</span>`;
-        btn.addEventListener(
-          "click",
-          () => {
-            c.apply();
-            overlay.style.display = "none";
-            if (world.pauseReason === "wave") {
-              world.paused = false;
-              world.pauseReason = "";
-              const pauseBtn = document.getElementById("pause-btn");
-              if (pauseBtn) pauseBtn.textContent = "Pause";
-            }
-          },
-          { once: true }
-        );
-        optsEl.appendChild(btn);
+
+      // Trigger wave upgrade event
+      if (world.onWaveComplete) {
+        world.onWaveComplete();
       }
-      overlay.style.display = "flex";
     },
     onEnemyKilled() {
       this.killsThisWave += 1;
