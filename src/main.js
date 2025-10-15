@@ -245,7 +245,7 @@ function generateUpgrades() {
     choices.push({
       icon: "⚡",
       title: `Lightning I`,
-      description: "Bullets chain to 1 enemy (70% damage)",
+      description: "Instant strikes to 3 enemies (200px, 50% damage)",
       apply: () => {
         p.perkLightning = true;
         p.perkLevels.lightning = 1;
@@ -256,7 +256,7 @@ function generateUpgrades() {
     choices.push({
       icon: "⚡",
       title: `Lightning II`,
-      description: "Chain to 2 enemies (85% damage)",
+      description: "Larger radius (350px, 70% damage, cyan bolts)",
       apply: () => {
         p.perkLevels.lightning = 2;
         updateStatsPanel();
@@ -665,6 +665,12 @@ function update(dt) {
   }
   world.spawnWarnings = world.spawnWarnings.filter((w) => w.timeLeft > 0);
 
+  // Update lightning strikes
+  for (const strike of world.lightningStrikes) {
+    strike.timer -= dt;
+  }
+  world.lightningStrikes = world.lightningStrikes.filter((s) => s.timer > 0);
+
   // Decay animations
   if (world.levelUpAnimation > 0) {
     world.levelUpAnimation = Math.max(0, world.levelUpAnimation - dt * 2);
@@ -791,6 +797,38 @@ function render() {
   world.player.draw(ctx, world.sprites);
   for (const e of world.enemies) e.draw(ctx, world.sprites);
   for (const p of world.projectiles) p.draw(ctx, world.sprites);
+
+  // Draw lightning strikes
+  for (const strike of world.lightningStrikes) {
+    const alpha = strike.timer / 0.15; // Fade out
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = strike.color;
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = strike.color;
+
+    // Draw jagged path
+    ctx.beginPath();
+    ctx.moveTo(strike.points[0].x, strike.points[0].y);
+    for (let i = 1; i < strike.points.length; i++) {
+      ctx.lineTo(strike.points[i].x, strike.points[i].y);
+    }
+    ctx.stroke();
+
+    // Draw glow line
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.strokeStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.moveTo(strike.points[0].x, strike.points[0].y);
+    for (let i = 1; i < strike.points.length; i++) {
+      ctx.lineTo(strike.points[i].x, strike.points[i].y);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
 
   // Draw spawn warnings
   for (const warning of world.spawnWarnings) {

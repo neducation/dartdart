@@ -1,5 +1,30 @@
 import { angleTo, normalize, pickNearest } from "./utils.js";
 
+// Helper function to generate jagged lightning path
+function generateLightningPath(x1, y1, x2, y2) {
+  const points = [{ x: x1, y: y1 }];
+  const segments = 8;
+  const jitter = 15;
+
+  for (let i = 1; i < segments; i++) {
+    const t = i / segments;
+    const x = x1 + (x2 - x1) * t;
+    const y = y1 + (y2 - y1) * t;
+
+    // Add random jitter perpendicular to the line
+    const angle = Math.atan2(y2 - y1, x2 - x1) + Math.PI / 2;
+    const offset = (Math.random() - 0.5) * jitter;
+
+    points.push({
+      x: x + Math.cos(angle) * offset,
+      y: y + Math.sin(angle) * offset,
+    });
+  }
+
+  points.push({ x: x2, y: y2 });
+  return points;
+}
+
 // Helper function to check collision with obstacles
 function checkObstacleCollision(x, y, radius, world) {
   for (const obs of world.obstacles) {
@@ -202,35 +227,49 @@ export class Projectile extends Entity {
             }
           }
           if (this.lightning) {
-            // Chain to another enemy with level scaling
+            // Instant lightning strike to nearest enemies within radius
             const level = p.perkLevels?.lightning || 1;
-            const chainCount = level === 1 ? 1 : 2; // Lightning I: 1 chain, Lightning II: 2 chains
-            const chainDamage = level === 1 ? 0.7 : 0.85;
+            const radius = level === 1 ? 200 : 350; // Lightning I: 200px, Lightning II: 350px
+            const maxTargets = 3; // Always 3 targets max
+            const baseDamage = level === 1 ? 0.5 : 0.7; // Lightning I: 50%, Lightning II: 70%
 
-            const others = world.enemies.filter((en) => !en.dead && en !== e);
-            for (let i = 0; i < chainCount && i < others.length; i++) {
-              const chain = pickNearest(
-                i === 0 ? e : others[i - 1],
-                others.filter((en) => !others.slice(0, i).includes(en))
+            // Find all enemies within radius
+            const inRadius = world.enemies.filter((en) => {
+              if (en.dead || en === e) return false;
+              const dist = Math.hypot(en.x - e.x, en.y - e.y);
+              return dist <= radius;
+            });
+
+            // Sort by distance and take closest 3
+            inRadius.sort((a, b) => {
+              const distA = Math.hypot(a.x - e.x, a.y - e.y);
+              const distB = Math.hypot(b.x - e.x, b.y - e.y);
+              return distA - distB;
+            });
+
+            const targets = inRadius.slice(0, maxTargets);
+
+            // Create jagged lightning strike for each target
+            for (const target of targets) {
+              const points = generateLightningPath(
+                e.x,
+                e.y,
+                target.x,
+                target.y
               );
-              if (chain) {
-                let proj = world.getProjectile();
-                if (!proj) proj = new Projectile(0, 0, 0, 0);
-                proj.reset(
-                  i === 0 ? e.x : others[i - 1].x,
-                  i === 0 ? e.y : others[i - 1].y,
-                  chain.x - (i === 0 ? e.x : others[i - 1].x),
-                  chain.y - (i === 0 ? e.y : others[i - 1].y),
-                  Math.hypot(this.vx, this.vy),
-                  this.damage * chainDamage,
-                  this.owner,
-                  {
-                    lightning: false, // Prevent infinite chaining!
-                  }
-                );
-                world.spawnProjectile(proj);
-              }
+              const color = level === 1 ? "#ffd700" : "#00ffff"; // Yellow for I, Cyan for II
+              world.lightningStrikes.push({
+                points,
+                timer: 0.15, // 150ms visible
+                color,
+              });
+
+              // Apply damage
+              target.hit(this.damage * baseDamage);
             }
+
+            // Screen shake for lightning
+            world.screenShake = Math.max(world.screenShake, 5);
           }
           const killed = e.hit(this.damage);
 
@@ -302,31 +341,77 @@ export class Projectile extends Entity {
   draw(ctx, sprites) {
     const rot = Math.atan2(this.vy, this.vx);
 
-    // Draw elemental glow effect
-    if (this.fire || this.ice || this.lightning || this.poison) {
+    // Draw combined elemental glow effects
+    const elements = [];
+    if (this.fire) elements.push({ color: "#ff6b35", name: "fire" });
+    if (this.ice) elements.push({ color: "#4dd0e1", name: "ice" });
+    if (this.lightning) elements.push({ color: "#ffd700", name: "lightning" });
+    if (this.poison) elements.push({ color: "#9ccc65", name: "poison" });
+
+    if (elements.length > 0) {
       ctx.save();
-      ctx.globalAlpha = 0.6;
-      ctx.shadowBlur = 12;
-      if (this.fire) {
-        ctx.shadowColor = "#ff6b35";
-        ctx.fillStyle = "#ff6b35";
-      } else if (this.ice) {
-        ctx.shadowColor = "#4dd0e1";
-        ctx.fillStyle = "#4dd0e1";
-      } else if (this.lightning) {
-        ctx.shadowColor = "#ffd700";
-        ctx.fillStyle = "#ffd700";
-      } else if (this.poison) {
-        ctx.shadowColor = "#9ccc65";
-        ctx.fillStyle = "#9ccc65";
+
+      // Draw multiple glows for combined effects
+      if (elements.length === 1) {
+        // Single element - standard glow
+        ctx.globalAlpha = 0.6;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = elements[0].color;
+        ctx.fillStyle = elements[0].color;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // Multiple elements - layered glows with rotation
+        const angleStep = (Math.PI * 2) / elements.length;
+        const time = Date.now() / 1000;
+
+        elements.forEach((el, i) => {
+          const angle = i * angleStep + time * 2;
+          const offsetX = Math.cos(angle) * 4;
+          const offsetY = Math.sin(angle) * 4;
+
+          ctx.globalAlpha = 0.5;
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = el.color;
+          ctx.fillStyle = el.color;
+          ctx.beginPath();
+          ctx.arc(this.x + offsetX, this.y + offsetY, 6, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Center glow (mixed color)
+        ctx.globalAlpha = 0.4;
+        ctx.shadowBlur = 15;
+        ctx.fillStyle = this.getMixedColor(elements);
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, 5, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.beginPath();
-      ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
-      ctx.fill();
+
       ctx.restore();
     }
 
     sprites.draw(ctx, "dart", this.x, this.y, 24, rot);
+  }
+
+  getMixedColor(elements) {
+    // Average the RGB values of all elements
+    let r = 0,
+      g = 0,
+      b = 0;
+    elements.forEach((el) => {
+      const hex = el.color.slice(1);
+      r += parseInt(hex.substr(0, 2), 16);
+      g += parseInt(hex.substr(2, 2), 16);
+      b += parseInt(hex.substr(4, 2), 16);
+    });
+    r = Math.floor(r / elements.length);
+    g = Math.floor(g / elements.length);
+    b = Math.floor(b / elements.length);
+    return `#${r.toString(16).padStart(2, "0")}${g
+      .toString(16)
+      .padStart(2, "0")}${b.toString(16).padStart(2, "0")}`;
   }
 }
 
