@@ -28,6 +28,7 @@ const world = {
   paused: false,
   pauseReason: "",
   wave: null,
+  spawnWarnings: [], // { x, y, timeLeft }
   // Projectile pool
   _projectilePool: [],
   getProjectile() {
@@ -214,14 +215,27 @@ function createWaveManager() {
     time: 0,
     targetKills: 0,
     killsThisWave: 0,
-    aliveCap: 0,
+    enemiesSpawned: 0, // Track how many enemies spawned this wave
+    totalEnemies: 0, // Set number of enemies per wave
     spawnCooldown: 0,
+    waveStartDelay: 0, // 2-second delay before spawning
+    waveActive: false, // Whether wave is actively spawning
     startNext() {
       this.index += 1;
       this.killsThisWave = 0;
-      this.targetKills = 6 + (this.index - 1) * 3;
-      this.aliveCap = Math.min(10, 3 + Math.floor(this.index / 2));
+      this.enemiesSpawned = 0;
+      this.totalEnemies = 8 + (this.index - 1) * 4; // Fixed count per wave
+      this.targetKills = this.totalEnemies;
       this.spawnCooldown = 0;
+      this.waveStartDelay = 2.0; // 2 second delay
+      this.waveActive = false;
+
+      // Clear all projectiles on wave end
+      for (const p of world.projectiles) {
+        world.releaseProjectile(p);
+      }
+      world.projectiles = [];
+
       // Pause for wave upgrade
       world.paused = true;
       world.pauseReason = "wave";
@@ -256,35 +270,60 @@ function createWaveManager() {
     },
     onEnemyKilled() {
       this.killsThisWave += 1;
-      if (this.killsThisWave >= this.targetKills) {
+      // Wave ends only when ALL enemies are killed
+      if (
+        this.killsThisWave >= this.targetKills &&
+        this.enemiesSpawned >= this.totalEnemies
+      ) {
         this.startNext();
       }
     },
     update(dt) {
       this.time += dt;
-      // keep spawning until alive reaches cap
+
+      // Handle wave start delay
+      if (this.waveStartDelay > 0) {
+        this.waveStartDelay -= dt;
+        if (this.waveStartDelay <= 0) {
+          this.waveActive = true;
+        }
+        return;
+      }
+
+      // Only spawn if we haven't reached total enemy count
+      if (!this.waveActive || this.enemiesSpawned >= this.totalEnemies) return;
+
       this.spawnCooldown -= dt;
-      const alive = world.enemies.length;
-      if (alive < this.aliveCap && this.spawnCooldown <= 0) {
+      if (this.spawnCooldown <= 0) {
         const toSpawn = Math.min(
-          this.aliveCap - alive,
+          this.totalEnemies - this.enemiesSpawned,
           1 + Math.floor(Math.random() * 2)
         );
+
         for (let i = 0; i < toSpawn; i++) {
           const [x, y] = randomEdgeSpawn();
-          // Spawn different enemy types based on wave
-          const rand = Math.random();
-          let enemy;
-          if (this.index >= 5 && rand < 0.15) {
-            enemy = new TankEnemy(x, y);
-          } else if (this.index >= 3 && rand < 0.35) {
-            enemy = new FastEnemy(x, y);
-          } else if (this.index >= 4 && rand < 0.55) {
-            enemy = new SplitterEnemy(x, y);
-          } else {
-            enemy = new Enemy(x, y);
-          }
-          world.enemies.push(enemy);
+
+          // Add spawn warning marker (0.5 second warning)
+          world.spawnWarnings.push({ x, y, timeLeft: 0.5 });
+
+          // Schedule enemy spawn after warning
+          setTimeout(() => {
+            // Spawn different enemy types based on wave
+            const rand = Math.random();
+            let enemy;
+            if (this.index >= 5 && rand < 0.15) {
+              enemy = new TankEnemy(x, y);
+            } else if (this.index >= 3 && rand < 0.35) {
+              enemy = new FastEnemy(x, y);
+            } else if (this.index >= 4 && rand < 0.55) {
+              enemy = new SplitterEnemy(x, y);
+            } else {
+              enemy = new Enemy(x, y);
+            }
+            world.enemies.push(enemy);
+          }, 500); // 0.5 second delay
+
+          this.enemiesSpawned++;
         }
         this.spawnCooldown = Math.max(0.5, 1.6 - this.index * 0.08);
       }
@@ -351,6 +390,12 @@ function update(dt) {
   }
   world.particles = world.particles.filter((p) => p.life > 0);
 
+  // Update spawn warnings
+  for (const warning of world.spawnWarnings) {
+    warning.timeLeft -= dt;
+  }
+  world.spawnWarnings = world.spawnWarnings.filter((w) => w.timeLeft > 0);
+
   // Decay screen shake
   world.screenShake = Math.max(0, world.screenShake - dt * 15);
 }
@@ -387,6 +432,23 @@ function render() {
   for (const e of world.enemies) e.draw(ctx, world.sprites);
   for (const p of world.projectiles) p.draw(ctx, world.sprites);
 
+  // Draw spawn warnings
+  for (const warning of world.spawnWarnings) {
+    const alpha = warning.timeLeft / 0.5; // Fade in from 0 to 1
+    const pulse = 0.7 + 0.3 * Math.sin(warning.timeLeft * 20); // Pulse effect
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.8;
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(warning.x, warning.y, 25 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * 0.4;
+    ctx.fillStyle = "#ef4444";
+    ctx.fill();
+    ctx.restore();
+  }
+
   // Draw particles
   for (const particle of world.particles) {
     const alpha = Math.max(0, particle.life / 0.5);
@@ -414,7 +476,11 @@ function render() {
     const p = world.player;
     const wave = world.wave?.index ?? 0;
     const pausedTxt = world.paused ? " | PAUSED" : "";
-    hud.textContent = `dartdart  |  Wave ${wave}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}`;
+    const delayTxt =
+      world.wave && world.wave.waveStartDelay > 0
+        ? ` | Starting in ${Math.ceil(world.wave.waveStartDelay)}s`
+        : "";
+    hud.textContent = `dartdart  |  Wave ${wave}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}${delayTxt}`;
   }
 }
 
