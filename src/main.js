@@ -9,9 +9,17 @@ import {
   TankEnemy,
   SplitterEnemy,
 } from "./entities.js";
+import { LevelManager, LEVEL_TYPES } from "./levels.js";
+import { AdManager } from "./ads.js";
 
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
+
+// Level manager
+const levelManager = new LevelManager();
+
+// Ad manager
+const adManager = new AdManager();
 
 // Global world state used by entities
 const world = {
@@ -362,13 +370,16 @@ function setupLeveling() {
     });
   }
 
-  p.onLevelUp = () => {
-    p.xpForNext = Math.floor(p.xpForNext * 1.25);
-    world.paused = true;
-    world.pauseReason = "levelup";
-    world.levelUpAnimation = 1.0; // Start animation
-    if (titleEl) titleEl.textContent = "Level Up! Choose an upgrade";
-    chooseUpgrades();
+  // Setup player level up handler (will be called when player is created)
+  world.setupPlayerLevelUp = (player) => {
+    player.onLevelUp = () => {
+      player.xpForNext = Math.floor(player.xpForNext * 1.25);
+      world.paused = true;
+      world.pauseReason = "levelup";
+      world.levelUpAnimation = 1.0; // Start animation
+      if (titleEl) titleEl.textContent = "Level Up! Choose an upgrade";
+      chooseUpgrades();
+    };
   };
 
   world.onWaveComplete = () => {
@@ -508,7 +519,7 @@ function generateObstacles(waveIndex) {
 }
 
 // --- Waves ---
-function createWaveManager() {
+function createWaveManager(level = null) {
   const m = {
     index: 0,
     time: 0,
@@ -519,6 +530,8 @@ function createWaveManager() {
     spawnCooldown: 0,
     waveStartDelay: 0, // 1-second delay before spawning
     waveActive: false, // Whether wave is actively spawning
+    level: level, // Store level configuration
+    levelComplete: false,
     startNext() {
       this.index += 1;
       this.killsThisWave = 0;
@@ -544,6 +557,28 @@ function createWaveManager() {
       // Trigger wave complete animation
       world.waveCompleteAnimation = 1.5;
 
+      // Check if level is complete (for wave-based levels)
+      if (
+        this.level &&
+        this.level.type === LEVEL_TYPES.WAVES &&
+        this.index > this.level.targetWaves
+      ) {
+        this.levelComplete = true;
+        this.onLevelComplete();
+        return;
+      }
+
+      // Check if ad should be shown (every 5 waves)
+      if (adManager.onWaveComplete()) {
+        adManager.showAd(() => {
+          // Resume game after ad closes
+          this.showWaveUpgrade();
+        });
+      } else {
+        this.showWaveUpgrade();
+      }
+    },
+    showWaveUpgrade() {
       // Pause for wave upgrade
       world.paused = true;
       world.pauseReason = "wave";
@@ -555,6 +590,27 @@ function createWaveManager() {
       if (world.onWaveComplete) {
         world.onWaveComplete();
       }
+    },
+    onLevelComplete() {
+      // Calculate stars based on performance
+      let stars = 1;
+      if (world.player.hp >= world.player.maxHp * 0.8) stars = 3;
+      else if (world.player.hp >= world.player.maxHp * 0.5) stars = 2;
+
+      // Save progress
+      levelManager.completeLevel(this.level.id, stars);
+
+      // Show completion screen
+      setTimeout(() => {
+        world.paused = true;
+        alert(
+          `🎉 Level Complete!\nStars: ${"⭐".repeat(
+            stars
+          )}\n\nReturning to level select...`
+        );
+        showScreen("level-select");
+        renderLevelMap();
+      }, 1000);
     },
     onEnemyKilled() {
       this.killsThisWave += 1;
@@ -568,6 +624,15 @@ function createWaveManager() {
     },
     update(dt) {
       this.time += dt;
+
+      // Check for timed level completion
+      if (this.level && this.level.type === LEVEL_TYPES.TIMED) {
+        if (this.time >= this.level.targetTime) {
+          this.levelComplete = true;
+          this.onLevelComplete();
+          return;
+        }
+      }
 
       // Handle wave start delay
       if (this.waveStartDelay > 0) {
@@ -623,6 +688,9 @@ function createWaveManager() {
 // --- Update & Render ---
 function update(dt) {
   if (world.paused) return;
+
+  // Only update game if player exists
+  if (!world.player) return;
 
   world.player.update(dt, world);
 
@@ -704,6 +772,14 @@ function update(dt) {
 
 function render() {
   ctx.clearRect(0, 0, world.width, world.height);
+
+  // Only render game if player exists
+  if (!world.player) {
+    // Just draw a simple background for menu screens
+    ctx.fillStyle = "#0f0f1e";
+    ctx.fillRect(0, 0, world.width, world.height);
+    return;
+  }
 
   // Draw fancy backdrop with gradient and border
   ctx.save();
@@ -956,12 +1032,35 @@ function render() {
   if (hud) {
     const p = world.player;
     const wave = world.wave?.index ?? 0;
+    const level = world.wave?.level;
     const pausedTxt = world.paused ? " | PAUSED" : "";
     const delayTxt =
       world.wave && world.wave.waveStartDelay > 0
         ? ` | Starting in ${Math.ceil(world.wave.waveStartDelay)}s`
         : "";
-    hud.textContent = `dartdart  |  Wave ${wave}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}${delayTxt}`;
+
+    let hudText = "";
+    if (level) {
+      if (level.type === LEVEL_TYPES.WAVES) {
+        hudText = `${level.name}  |  Wave ${wave}/${level.targetWaves}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}${delayTxt}`;
+      } else if (level.type === LEVEL_TYPES.TIMED) {
+        const timeLeft = Math.max(
+          0,
+          level.targetTime - Math.floor(world.wave.time)
+        );
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        hudText = `${level.name}  |  Time ${minutes}:${seconds
+          .toString()
+          .padStart(2, "0")}  |  Lv ${p.level}${pausedTxt}`;
+      } else {
+        hudText = `${level.name}  |  Wave ${wave}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}${delayTxt}`;
+      }
+    } else {
+      hudText = `dartdart  |  Wave ${wave}  |  Lv ${p.level}  XP ${p.xp}/${p.xpForNext}${pausedTxt}${delayTxt}`;
+    }
+
+    hud.textContent = hudText;
   }
 }
 
@@ -1092,20 +1191,205 @@ function updateStatsPanel() {
   statsContent.innerHTML = html;
 }
 
-// --- Boot ---
-async function boot() {
-  world.input = new VirtualJoystick(canvas);
-  world.sprites = await loadSpriteSheet("./assets/sprites.svg");
+// --- UI Management ---
+function showScreen(screenId) {
+  // Hide all screens
+  const screens = ["loading-screen", "main-menu", "level-select"];
+  screens.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.classList.remove("active");
+      el.classList.add("hidden");
+      el.style.display = "none";
+    }
+  });
+
+  // Show requested screen
+  const screen = document.getElementById(screenId);
+  if (screen) {
+    screen.classList.remove("hidden");
+    screen.classList.add("active");
+    screen.style.display = "flex";
+  }
+
+  // Hide/show game elements
+  const gameElements = document.querySelectorAll(
+    "#game, .hud, #pause-btn, #stats-panel, #upgrade"
+  );
+  const showGame = screenId === "game";
+  gameElements.forEach((el) => {
+    if (el.id === "game") {
+      el.style.display = showGame ? "block" : "none";
+    } else if (el.classList.contains("hud")) {
+      el.style.display = showGame ? "flex" : "none";
+    } else if (el.id === "pause-btn") {
+      el.style.display = showGame ? "block" : "none";
+    }
+  });
+}
+
+function initMainMenu() {
+  const playBtn = document.getElementById("play-btn");
+  const continueBtn = document.getElementById("continue-btn");
+
+  playBtn.addEventListener("click", () => {
+    showScreen("level-select");
+    renderLevelMap();
+  });
+
+  // TODO: Implement continue functionality for saved games
+  if (continueBtn) {
+    continueBtn.style.display = "none";
+  }
+}
+
+function renderLevelMap() {
+  const levelMap = document.getElementById("level-map");
+  if (!levelMap) return;
+
+  // Clear existing nodes (keep the path)
+  const existingNodes = levelMap.querySelectorAll(".level-node");
+  existingNodes.forEach((node) => node.remove());
+
+  levelManager.levels.forEach((level, index) => {
+    const node = document.createElement("div");
+    node.className = "level-node";
+
+    const icon = document.createElement("div");
+    icon.className = `level-icon ${
+      level.unlocked ? (level.completed ? "completed" : "unlocked") : "locked"
+    }`;
+    icon.textContent = level.icon;
+
+    const label = document.createElement("div");
+    label.className = "level-label";
+    label.textContent = level.name;
+
+    const type = document.createElement("div");
+    type.className = "level-type";
+    type.textContent = level.description;
+
+    // Add stars if completed
+    if (level.completed && level.stars > 0) {
+      const stars = document.createElement("div");
+      stars.className = "level-stars";
+      for (let i = 0; i < 3; i++) {
+        stars.textContent += i < level.stars ? "⭐" : "☆";
+      }
+      node.appendChild(stars);
+    }
+
+    // Click handler
+    if (level.unlocked) {
+      icon.addEventListener("click", () => {
+        startLevel(level.id);
+      });
+    }
+
+    node.appendChild(icon);
+    node.appendChild(label);
+    node.appendChild(type);
+    levelMap.appendChild(node);
+  });
+}
+
+function initLevelSelect() {
+  const backBtn = document.getElementById("back-to-menu-btn");
+  backBtn.addEventListener("click", () => {
+    showScreen("main-menu");
+  });
+}
+
+function startLevel(levelId) {
+  const level = levelManager.setCurrentLevel(levelId);
+  if (!level) return;
+
+  showScreen("game");
+  initGame(level);
+}
+
+function initGame(level) {
+  // Reset world state for new game
+  world.paused = false;
+  world.pauseReason = "";
+  world.enemies = [];
+  world.projectiles = [];
+  world.effects = [];
+  world.particles = [];
+  world.screenShake = 0;
+  world.spawnWarnings = [];
+  world.obstacles = [];
+  world.levelUpAnimation = 0;
+  world.waveCompleteAnimation = 0;
+  world.lightningStrikes = [];
+  world.redrawsThisWave = 0;
+
+  // Create new player
   world.player = new Player(
     Math.floor(world.width / 2),
     Math.floor(world.height / 2)
   );
 
-  setupLeveling();
-  world.wave = createWaveManager();
+  // Setup player level up handler
+  if (world.setupPlayerLevelUp) {
+    world.setupPlayerLevelUp(world.player);
+  }
+
+  // Setup wave manager based on level type
+  world.wave = createWaveManager(level);
   world.wave.startNext();
 
-  // Pause button and stats panel
+  // Update HUD
+  const hud = document.getElementById("hud");
+  if (hud) {
+    hud.textContent =
+      level.name +
+      (level.type === LEVEL_TYPES.WAVES ? ` - Wave ${world.wave.index}` : "");
+  }
+}
+
+// --- Boot ---
+async function boot() {
+  const loadingScreen = document.getElementById("loading-screen");
+  const loadingText = loadingScreen?.querySelector(".loading-text");
+
+  try {
+    // Load resources
+    if (loadingText) loadingText.textContent = "Loading sprites...";
+    world.sprites = await loadSpriteSheet("./assets/sprites.svg");
+
+    if (loadingText) loadingText.textContent = "Initializing...";
+    world.input = new VirtualJoystick(canvas);
+
+    // Small delay to show loading screen
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Initialize UI
+    initMainMenu();
+    initLevelSelect();
+    setupLeveling();
+
+    // Setup pause button (but keep hidden until game starts)
+    setupPauseButton();
+
+    // Start game engine
+    const engine = new Engine(update, render);
+    engine.start();
+
+    // Show main menu
+    showScreen("main-menu");
+
+    // Check if ad should show on refresh (after menu is shown)
+    adManager.checkAndShowAdOnRefresh(() => {
+      // Ad closed, continue normal flow
+    });
+  } catch (error) {
+    console.error("Boot failed:", error);
+    if (loadingText) loadingText.textContent = "Error loading game!";
+  }
+}
+
+function setupPauseButton() {
   const pauseBtn = document.getElementById("pause-btn");
   const statsPanel = document.getElementById("stats-panel");
   if (pauseBtn) {
@@ -1123,9 +1407,6 @@ async function boot() {
       }
     });
   }
-
-  const engine = new Engine(update, render);
-  engine.start();
 }
 
 boot();
