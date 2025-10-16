@@ -465,6 +465,81 @@
         z-index: 2000;
         padding: 20px;
       }
+      .ad-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 20px;
+      }
+      .ad-icon {
+        background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+        border: 3px solid #3b82f6;
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4);
+        }
+        50% {
+          transform: scale(1.05);
+          box-shadow: 0 15px 50px rgba(59, 130, 246, 0.6);
+        }
+      }
+      .ad-icon-content {
+        text-align: center;
+        color: white;
+      }
+      .ad-icon-symbol {
+        font-size: 80px;
+        margin-bottom: 10px;
+      }
+      .ad-icon-text {
+        font-size: 24px;
+        font-weight: 600;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+      }
+      .ad-play-btn {
+        padding: 16px 48px;
+        font-size: 20px;
+        font-weight: 700;
+        border: 3px solid #10b981;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+        color: white;
+        cursor: pointer;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        transition: all 0.3s;
+        box-shadow: 0 6px 20px rgba(16, 185, 129, 0.4);
+      }
+      .ad-play-btn:hover {
+        background: linear-gradient(135deg, #10b981 0%, #34d399 100%);
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.6);
+      }
+      .ad-skip-btn {
+        padding: 12px 32px;
+        font-size: 16px;
+        font-weight: 600;
+        border: 2px solid #6b7280;
+        border-radius: 10px;
+        background: #374151;
+        color: #d1d5db;
+        cursor: pointer;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        transition: all 0.2s;
+      }
+      .ad-skip-btn:hover {
+        background: #4b5563;
+        border-color: #9ca3af;
+      }
       .ad-video {
         max-width: 90vw;
         max-height: 70vh;
@@ -472,6 +547,7 @@
         height: auto;
         border-radius: 12px;
         box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+        background: #000;
       }
       .ad-close-btn {
         margin-top: 20px;
