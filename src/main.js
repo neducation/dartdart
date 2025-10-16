@@ -318,8 +318,17 @@ function setupLeveling() {
   function updateRedrawButton() {
     if (!redrawBtn) return;
     const remaining = world.maxRedraws - world.redrawsThisWave;
-    redrawBtn.textContent = `🔄 Redraw (${remaining} left)`;
-    redrawBtn.disabled = remaining <= 0;
+
+    if (remaining <= 0) {
+      // Show ad icon and option to watch ad for another redraw
+      redrawBtn.innerHTML = `📺 Watch Ad for Redraw`;
+      redrawBtn.disabled = false;
+      redrawBtn.classList.add("ad-redraw");
+    } else {
+      redrawBtn.innerHTML = `🔄 Redraw (${remaining} left)`;
+      redrawBtn.disabled = false;
+      redrawBtn.classList.remove("ad-redraw");
+    }
   }
 
   function showOverlay(choices) {
@@ -356,7 +365,18 @@ function setupLeveling() {
   // Redraw button handler
   if (redrawBtn) {
     redrawBtn.addEventListener("click", () => {
-      if (world.redrawsThisWave < world.maxRedraws) {
+      const remaining = world.maxRedraws - world.redrawsThisWave;
+
+      if (remaining <= 0) {
+        // Show ad to get another redraw
+        adManager.showAd(() => {
+          // Grant one more redraw after watching ad
+          world.maxRedraws++;
+          world.redrawsThisWave++;
+          chooseUpgrades(false);
+        });
+      } else {
+        // Normal redraw
         world.redrawsThisWave++;
         chooseUpgrades(false);
       }

@@ -222,6 +222,25 @@
         border-color: #3b82f6;
         color: #93c5fd;
       }
+      #upgrade .action-btn.redraw.ad-redraw {
+        border-color: #f59e0b;
+        background: linear-gradient(135deg, #92400e 0%, #b45309 100%);
+        color: #fde68a;
+        animation: adGlow 2s ease-in-out infinite;
+      }
+      #upgrade .action-btn.redraw.ad-redraw:hover {
+        background: linear-gradient(135deg, #b45309 0%, #d97706 100%);
+        transform: scale(1.05);
+      }
+      @keyframes adGlow {
+        0%,
+        100% {
+          box-shadow: 0 0 10px rgba(245, 158, 11, 0.4);
+        }
+        50% {
+          box-shadow: 0 0 20px rgba(245, 158, 11, 0.8);
+        }
+      }
       #upgrade .action-btn.debug {
         border-color: #ef4444;
         color: #fca5a5;
